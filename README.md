@@ -1,6 +1,6 @@
 # RetroShelf 
 ---
-<img width="992" height="93" alt="image" src="https://github.com/user-attachments/assets/40dd3cc2-46e2-4047-878f-6112ee6fd836" />
+<img width="839" height="109" alt="image" src="https://github.com/user-attachments/assets/72f64a55-e5b5-4a70-849c-82c7a51bea5a" />
 
 ![RetroShelf v0.3.0](https://img.shields.io/badge/version-0.3.0-c8901a?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue?style=for-the-badge)
