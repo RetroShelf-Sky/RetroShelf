@@ -13,7 +13,7 @@ Retroshelf is the all-in-one well-rounded software built to hold all your variou
 Avoid the eye-sore and brain aneurysm from switching between all your dozen emulators scattered around your PC with RetroShelf.
 
 RetroShelf does this buy placing all common (*... and legal*) emulators onto one shelf.
-<img width="1275" height="799" alt="image" src="https://github.com/user-attachments/assets/dbfba689-a480-4149-9567-be27210e72f0" />
+<img width="1275" height="799" alt="image" src="https://github.com/user-attachments/assets/10a67a6a-a164-45d2-a69b-f9287c867121" />
 
 
 
