@@ -65,6 +65,10 @@ RetroShelf is very user-friendly, thats why in-depth setup guides are included f
 
 ---
 
+### Please report ALL bugs or any issues you might have, Thanks!!
+
+---
+
 ## Legal
 
 RetroShelf is a **launcher only** — it does not include, distribute, or endorse any ROMs, BIOS files, or copyrighted game content. You must provide your own legally obtained ROM files and emulators. Please respect the intellectual property of game developers and publishers.
