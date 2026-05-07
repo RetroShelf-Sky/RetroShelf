@@ -9,7 +9,7 @@
 ---
 
 # What IS RetroShelf?
-RetroShelf is a desktop app that brings all your retro game emulators and ROM libraries together in one place.
+**RetroShelf is a desktop app that brings all your retro game emulators and ROM libraries together in one place.**
 
 Instead of hunting through folders or launching emulators separately, RetroShelf gives you a bookshelf-style interface where you can browse, search, and launch any game across 12 consoles in seconds! Each console having there respective libraries with game covers provided by SteamgridsDB automatically for any game you add!
 
