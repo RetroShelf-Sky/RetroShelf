@@ -65,7 +65,7 @@ RetroShelf is very user-friendly, thats why in-depth setup guides are included f
 
 ---
 
-### Please report ALL bugs or any issues you might have, Thanks!!!
+### Please report ALL bugs or any issues you might have, Thanks!!!!
 
 ---
 
