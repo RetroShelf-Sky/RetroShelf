@@ -52,7 +52,7 @@ Retroshelf aims to have a large selection of consoles at your fingertips, few po
 # New to emulation? No worries!*
 
 RetroShelf is very user-friendly, thats why in-depth setup guides are included for each console / Misc. troubleshoots.
-<img width="400" height="332" alt="2026-05-07 15-28-06 (online-video-cutter com)" src="https://github.com/user-attachments/assets/f87d191c-4927-4319-98db-365fd7397c0c" />
+<img width="400" height="332" alt="2026-05-07_15-28-06_online-video-cutter com" src="https://github.com/user-attachments/assets/b816cfa8-728d-4f6c-9aa8-fe54806482f5" />
 
 ---
 # Installation
