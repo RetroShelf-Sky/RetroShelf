@@ -32,6 +32,7 @@ Avoid the eye-sore and brain aneurysm from switching between all your dozen emul
   - Pinned games & Collections
   - Playtime stats & Tracking
   - Setup guides*
+  - Achievements (Coming Shortly)
   - **And much more!**
 
 ---
