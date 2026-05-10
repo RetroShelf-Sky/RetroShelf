@@ -225,8 +225,14 @@ async fn startup_scan(state: State<'_, AppState>) -> Result<HashMap<String, u32>
             .and_then(|v| v.as_bool())
             .unwrap_or(true)
     };
-    if !should_scan { return Ok(HashMap::new()); }
-    rescan_all_folders(state).await
+    if !should_scan {
+        // Still clean up orphans even if not scanning
+        let _ = cleanup_orphaned_games(state).await;
+        return Ok(HashMap::new());
+    }
+    let result = rescan_all_folders(state.clone()).await;
+    let _ = cleanup_orphaned_games(state).await;
+    result
 }
 
 #[tauri::command]
@@ -543,6 +549,21 @@ async fn toggle_fullscreen(window: tauri::Window) -> Result<(), String> {
 #[tauri::command]
 async fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+#[tauri::command]
+async fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
+#[tauri::command]
+async fn open_url(url: String) {
+    #[cfg(target_os = "windows")]
+    let _ = Command::new("cmd").args(["/c", "start", &url]).spawn();
+    #[cfg(target_os = "macos")]
+    let _ = Command::new("open").arg(&url).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = Command::new("xdg-open").arg(&url).spawn();
 }
 
 #[tauri::command]
@@ -878,6 +899,38 @@ async fn set_custom_cover(
     }
     save_games(&state.games_path, &store)?;
     Ok(dest_str)
+}
+
+#[tauri::command]
+async fn cleanup_orphaned_games(state: State<'_, AppState>) -> Result<HashMap<String, u32>, String> {
+    let folders: HashMap<String, Vec<String>> = {
+        let cfg = state.config.lock().unwrap();
+        cfg.consoles.iter()
+            .map(|(id, c)| (id.clone(), c.rom_folders.clone()))
+            .collect()
+    };
+
+    let mut removed_counts: HashMap<String, u32> = HashMap::new();
+    let mut store = state.games.lock().unwrap();
+
+    for (console_id, rom_folders) in &folders {
+        if let Some(games) = store.games.get_mut(console_id) {
+            let before = games.len();
+            games.retain(|g| {
+                // Keep the game if its path lives inside any configured folder
+                rom_folders.iter().any(|folder| {
+                    Path::new(&g.path).starts_with(Path::new(folder))
+                })
+            });
+            let removed = (before - games.len()) as u32;
+            if removed > 0 {
+                removed_counts.insert(console_id.clone(), removed);
+            }
+        }
+    }
+
+    save_games(&state.games_path, &store)?;
+    Ok(removed_counts)
 }
 
 #[tauri::command]
@@ -2004,6 +2057,8 @@ fn main() {
             test_emulator_launch,
             toggle_fullscreen,
             exit_app,
+            restart_app,
+            open_url,
             open_emulator,
             scan_covers_for_console,
             fetch_cover_art,
@@ -2011,6 +2066,7 @@ fn main() {
             get_cover_base64,
             set_custom_cover,
             rescan_all_folders,
+            cleanup_orphaned_games,
             write_emulator_config,
             write_controller_bindings,
             write_dolphin_config,

@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
+// ─── THEME ────────────────────────────────────────────────────────────────────
 // ─── THEME (single default) ───────────────────────────────────────────────────
 const T = {
   bg:"linear-gradient(160deg,#100a00,#1c1205,#0a0600)",
@@ -36,6 +37,7 @@ function G(){
       @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
       @keyframes spin{to{transform:rotate(360deg)}}
       @keyframes rainbowSpin{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+      @keyframes particleDrift{0%{transform:translateY(0) translateX(0);opacity:0}20%{opacity:1}100%{transform:translateY(-110vh) translateX(20px);opacity:0}}
       @keyframes tooltipIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
       ::-webkit-scrollbar{width:5px;height:5px}
       ::-webkit-scrollbar-track{background:rgba(255,255,255,0.02)}
@@ -1214,10 +1216,11 @@ function RainbowBorder(){
   );
 }
 
-function GameCard({game,idx,accent,color,consoleId,onPlay,onRemove,onCoverUpdate,onRename,showPath,pinned,onTogglePin,pinnedCount,isRainbow}){
+function GameCard({game,idx,accent,color,consoleId,onPlay,onRemove,onCoverUpdate,onRename,showPath,pinned,onTogglePin,pinnedCount,isRainbow,rating=0,isFav=false,onSetRating,onToggleFav}){
   const [hov,setHov]=useState(false);
   const [showGear,setShowGear]=useState(false);
   const [showRename,setShowRename]=useState(false);
+  const [showRating,setShowRating]=useState(false);
   const [coverData,setCoverData]=useState(null);
   const [bg1,bg2]=GAME_COLORS[idx%GAME_COLORS.length];
   const init=(game.title||"?").split(/[\s:]+/).filter(Boolean).slice(0,2).map(w=>w[0]).join("").toUpperCase();
@@ -1294,7 +1297,33 @@ function GameCard({game,idx,accent,color,consoleId,onPlay,onRemove,onCoverUpdate
                   </svg>
                 </div>
                 {showGear&&(
-                  <div style={{position:"absolute",top:"26px",right:0,background:"#1a1008",border:"1px solid rgba(255,255,255,0.12)",borderRadius:"8px",padding:"4px",minWidth:"160px",boxShadow:"0 12px 32px rgba(0,0,0,0.8)",zIndex:20}}>
+                  <div style={{position:"absolute",top:"26px",right:0,background:"#1a1008",border:"1px solid rgba(255,255,255,0.12)",borderRadius:"8px",padding:"4px",minWidth:"180px",boxShadow:"0 12px 32px rgba(0,0,0,0.8)",zIndex:20}}>
+                    {/* Playtime */}
+                    {(game.playtime_seconds||0)>0&&(
+                      <div style={{padding:"5px 10px 4px",fontSize:"9px",color:"rgba(255,255,255,0.3)",letterSpacing:"1px",borderBottom:"1px solid rgba(255,255,255,0.06)",marginBottom:"3px"}}>
+                        ⏱ {(()=>{const s=game.playtime_seconds||0;const h=Math.floor(s/3600);const m=Math.floor((s%3600)/60);return h>0?`${h}h ${m}m`:`${m}m`;})()}  played
+                      </div>
+                    )}
+                    {/* Favorite */}
+                    <GearItem icon={isFav?"❤️":"🤍"} label={isFav?"Remove from Favorites":"Add to Favorites"} color={isFav?"#f87171":undefined} onClick={e=>{e.stopPropagation();onToggleFav?.();setShowGear(false);}}/>
+                    {/* Rating */}
+                    {!showRating
+                      ?<GearItem icon="⭐" label={rating>0?`Rating: ${rating}/10`:"Rate This Game"} onClick={e=>{e.stopPropagation();setShowRating(true);}}/>
+                      :<div style={{padding:"6px 10px"}}>
+                        <div style={{fontSize:"9px",color:"rgba(255,255,255,0.4)",marginBottom:"5px",letterSpacing:"1px"}}>RATING</div>
+                        <div style={{display:"flex",gap:"3px",flexWrap:"wrap"}}>
+                          {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+                            <div key={n} onClick={e=>{e.stopPropagation();onSetRating?.(n);setShowRating(false);setShowGear(false);}}
+                              style={{width:"22px",height:"22px",borderRadius:"4px",background:n<=rating?accent+"44":"rgba(255,255,255,0.06)",border:`1px solid ${n<=rating?accent+"66":"rgba(255,255,255,0.08)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",fontWeight:700,color:n<=rating?accent:"rgba(255,255,255,0.4)",cursor:"pointer"}}>
+                              {n}
+                            </div>
+                          ))}
+                          {rating>0&&<div onClick={e=>{e.stopPropagation();onSetRating?.(0);setShowRating(false);setShowGear(false);}}
+                            style={{width:"22px",height:"22px",borderRadius:"4px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",cursor:"pointer"}}>✕</div>}
+                        </div>
+                      </div>
+                    }
+                    <div style={{height:"1px",background:"rgba(255,255,255,0.06)",margin:"3px 4px"}}/>
                     <GearItem icon={pinned?"📌":"📌"} label={pinned?`Unpin from Main Menu`:`Pin to Main Menu (${pinnedCount}/12)`} color={pinned?"#c8a040":undefined} onClick={e=>{e.stopPropagation();onTogglePin?.();setShowGear(false);}}/>
                     <GearItem icon="🖼" label="Set Cover" onClick={pickCover}/>
                     <GearItem icon="✏️" label="Rename" onClick={e=>{e.stopPropagation();setShowRename(true);setShowGear(false);}}/>
@@ -1303,6 +1332,10 @@ function GameCard({game,idx,accent,color,consoleId,onPlay,onRemove,onCoverUpdate
                   </div>
                 )}
               </div>
+              {/* Heart indicator */}
+              {isFav&&!showGear&&<div style={{position:"absolute",top:"5px",left:"5px",fontSize:"10px",zIndex:6,filter:"drop-shadow(0 0 3px rgba(248,113,113,0.8))"}}>❤️</div>}
+              {/* Rating indicator */}
+              {rating>0&&!showGear&&<div style={{position:"absolute",bottom:"5px",left:"5px",background:"rgba(0,0,0,0.7)",borderRadius:"4px",padding:"1px 4px",fontSize:"8px",fontWeight:700,color:accent,zIndex:6}}>★{rating}</div>}
             </>
           )}
         </div>
@@ -1362,7 +1395,7 @@ function ConsoleGuideModal({step,accent,onClose}){
   );
 }
 
-function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate}){
+function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate,tryUnlock,getRating,isFav,onSetRating,onToggleFav}){
   const c=CONSOLES[consoleId];
   const globalCfg=appConfig?.global||{};
   const showPaths=globalCfg.showPaths===true;
@@ -1374,6 +1407,7 @@ function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate}){
 
   const [games,setGames]=useState([]);
   const [search,setSearch]=useState("");
+  const [showFavOnly,setShowFavOnly]=useState(false);
   const [showDirectory,setShowDirectory]=useState(false);
   const [showGuide,setShowGuide]=useState(false);
   const [toast,setToast]=useState(null);
@@ -1387,6 +1421,7 @@ function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate}){
     if(already){savePinned(pinnedGames.filter(p=>!(p.gameId===game.id&&p.consoleId===consoleId)));}
     else{
       if(pinnedGames.length>=12){showToast("Max 12 pinned — unpin one first","info");return;}
+      try{localStorage.setItem("rs_last_pin_time",Date.now().toString());}catch{}
       savePinned([...pinnedGames,{gameId:game.id,consoleId,title:game.title,cover_path:game.cover_path||null,path:game.path}]);
     }
   };
@@ -1396,15 +1431,26 @@ function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate}){
   const loadGames=useCallback(()=>{invoke("get_games",{consoleId}).then(setGames).catch(()=>setGames([]));},[consoleId]);
   useEffect(()=>{loadGames();},[loadGames]);
 
-  const filtered=games.filter(g=>(g.title||"").toLowerCase().includes(search.toLowerCase())).sort((a,b)=>(a.title||"").localeCompare(b.title||""));
+  const filtered=games.filter(g=>{
+    if(showFavOnly&&!isFav?.(consoleId,g.id))return false;
+    return(g.title||"").toLowerCase().includes(search.toLowerCase());
+  }).sort((a,b)=>(a.title||"").localeCompare(b.title||""));
   const rowsToShow=Math.max(1,Math.ceil(filtered.length/cols));
 
-  const removeGame=async(game)=>{await invoke("remove_game",{consoleId,gameId:game.id}).catch(()=>null);setGames(gs=>gs.filter(g=>g.id!==game.id));};
+  const removeGame=async(game)=>{
+    await invoke("remove_game",{consoleId,gameId:game.id}).catch(()=>null);
+    setGames(gs=>gs.filter(g=>g.id!==game.id));
+    try{const rc=(parseInt(localStorage.getItem("rs_remove_count")||"0"))+1;localStorage.setItem("rs_remove_count",rc);}catch{}
+  };
   const updateCover=(gameId,newPath)=>{
     setGames(gs=>gs.map(g=>g.id===gameId?{...g,cover_path:newPath}:g));
     try{const p=JSON.parse(localStorage.getItem("rs_pinned")||"[]");localStorage.setItem("rs_pinned",JSON.stringify(p.map(x=>x.gameId===gameId&&x.consoleId===consoleId?{...x,cover_path:newPath}:x)));}catch{}
+    try{const cc=(parseInt(localStorage.getItem("rs_cover_count")||"0"))+1;localStorage.setItem("rs_cover_count",cc);}catch{}
   };
-  const renameGame=(gameId,newTitle,newPath)=>{setGames(gs=>gs.map(g=>g.id===gameId?{...g,title:newTitle,path:newPath||g.path}:g));};
+  const renameGame=(gameId,newTitle,newPath)=>{
+    setGames(gs=>gs.map(g=>g.id===gameId?{...g,title:newTitle,path:newPath||g.path}:g));
+    try{const rc=(parseInt(localStorage.getItem("rs_rename_count")||"0"))+1;localStorage.setItem("rs_rename_count",rc);}catch{}
+  };
   const addFolder=async()=>{
     const folder=await invoke("open_folder_dialog").catch(()=>null);
     if(!folder)return;
@@ -1425,7 +1471,27 @@ function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate}){
     catch(e){showToast(`${e}`,"error");}
   };
   const launchGame=async(game)=>{
-    try{await invoke("launch_game",{consoleId,gameId:game.id});}
+    try{
+      const launchStart=Date.now();
+      await invoke("launch_game",{consoleId,gameId:game.id});
+      const durationSeconds=Math.round((Date.now()-launchStart)/1000);
+      window._addSession?.(consoleId,game.id,game.title||"Unknown",durationSeconds);
+      if(tryUnlock){
+        const h=new Date().getHours();
+        if(h>=0&&h<4)tryUnlock("secret_3am");
+        try{
+          const openTime=parseInt(localStorage.getItem("rs_app_open_time")||"0");
+          if(openTime&&Date.now()-openTime<15000)tryUnlock("secret_fast");
+          const today=new Date().toDateString();
+          const td=JSON.parse(localStorage.getItem("rs_today_games")||"{}");
+          if(td.date!==today){td.date=today;td.games=[];}
+          if(!td.games.includes(`${consoleId}:${game.id}`))td.games.push(`${consoleId}:${game.id}`);
+          localStorage.setItem("rs_today_games",JSON.stringify(td));
+          if(td.games.length>=10)tryUnlock("play_10_oneday");
+          localStorage.setItem("rs_session_start",Date.now().toString());
+        }catch{}
+      }
+    }
     catch(e){showToast(`Launch failed: ${e}`,"error");}
   };
   const toggleFullscreen=async()=>{
@@ -1449,11 +1515,15 @@ function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate}){
             <span style={{position:"absolute",left:"8px",top:"50%",transform:"translateY(-50%)",fontSize:"10px",opacity:0.35}}>🔍</span>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"7px",padding:"6px 8px 6px 24px",color:"#fff",fontSize:"11px",width:"130px"}}/>
           </div>
+          <Btn onClick={()=>setShowFavOnly(v=>!v)} style={{fontSize:"13px",padding:"6px 10px",background:showFavOnly?"rgba(239,68,68,0.15)":"transparent",border:`1px solid ${showFavOnly?"rgba(239,68,68,0.4)":"rgba(255,255,255,0.1)"}`,color:showFavOnly?"#f87171":"rgba(255,255,255,0.4)"}} title={showFavOnly?"Show all games":"Show favorites only"}>
+            {showFavOnly?"❤️":"🤍"}
+          </Btn>
           <Btn onClick={openEmulator} style={{fontSize:"11px"}}>🚀 Launch {c.emulator}</Btn>
           <Btn onClick={fetchCovers} disabled={fetchingCovers} style={{fontSize:"11px",display:"flex",alignItems:"center",gap:"4px"}}>
             {fetchingCovers?<Spinner size={11}/>:"🖼"} Fetch Covers
           </Btn>
-          <Btn onClick={async()=>{setScanning(true);try{const folders=(appConfig?.consoles?.[consoleId]?.rom_folders||[]);for(const folder of folders){try{const n=await invoke("scan_rom_folder",{consoleId,folder});setGames(p=>{const existing=new Set(p.map(g=>g.path));return[...p,...n.filter(g=>!existing.has(g.path))];});}catch{}}showToast("Library refreshed","success");}finally{setScanning(false);}}} disabled={scanning} style={{fontSize:"11px",display:"flex",alignItems:"center",gap:"4px"}} title="Rescan ROM folders">
+          <Btn onClick={async()=>{setScanning(true);try{const folders=(appConfig?.consoles?.[consoleId]?.rom_folders||[]);for(const folder of folders){try{const n=await invoke("scan_rom_folder",{consoleId,folder});setGames(p=>{const existing=new Set(p.map(g=>g.path));return[...p,...n.filter(g=>!existing.has(g.path))];});}catch{}}// Remove games from folders no longer configured
+await invoke("cleanup_orphaned_games").catch(()=>{});const fresh=await invoke("get_games",{consoleId}).catch(()=>null);if(fresh)setGames(fresh);showToast("Library refreshed","success");}finally{setScanning(false);}}} disabled={scanning} style={{fontSize:"11px",display:"flex",alignItems:"center",gap:"4px"}} title="Rescan ROM folders">
             {scanning?<Spinner size={11} color={c.accent}/>:"🔄"} Refresh
           </Btn>
           <Btn onClick={()=>setShowDirectory(true)} style={{fontSize:"11px"}}>📂 Directory</Btn>
@@ -1475,7 +1545,7 @@ function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate}){
                   {Array.from({length:cols}).map((_,si)=>{
                     const game=filtered[rowStart+si];
                     return game
-                      ?<GameCard key={game.id} game={game} idx={rowStart+si} accent={c.accent} color={c.color} consoleId={consoleId} onPlay={()=>launchGame(game)} onRemove={()=>removeGame(game)} onCoverUpdate={updateCover} onRename={renameGame} showPath={showPaths} pinned={isPinned(game)} onTogglePin={()=>togglePin(game)} pinnedCount={pinnedGames.length} isRainbow={c.rainbow===true}/>
+                      ?<GameCard key={game.id} game={game} idx={rowStart+si} accent={c.accent} color={c.color} consoleId={consoleId} onPlay={()=>launchGame(game)} onRemove={()=>removeGame(game)} onCoverUpdate={updateCover} onRename={renameGame} showPath={showPaths} pinned={isPinned(game)} onTogglePin={()=>togglePin(game)} pinnedCount={pinnedGames.length} isRainbow={c.rainbow===true} rating={getRating?.(consoleId,game.id)||0} isFav={isFav?.(consoleId,game.id)||false} onSetRating={(r)=>onSetRating?.(consoleId,game.id,r)} onToggleFav={()=>onToggleFav?.(consoleId,game.id)}/>
                       :null;
                   })}
                 </div>
@@ -1515,9 +1585,11 @@ function GlobalSettings({config,onClose,onSaved}){
     setStatus({msg:"Resetting everything...",type:"loading"});
     try{
       await invoke("reset_all_settings");
-      try{ localStorage.removeItem("rs_tutorial_seen"); }catch{}
-      setStatus({msg:"Everything cleared. Restart RetroShelf to apply.",type:"success"});
-      setTimeout(()=>{setStatus(null);onSaved?.();onClose();},2000);
+      // Clear all localStorage data
+      const keysToRemove=["rs_tutorial_seen","rs_profile","rs_achievements","rs_pinned","rs_collections","rs_consoles_played","rs_games_played","rs_launch_count","rs_cover_count","rs_rename_count","rs_remove_count","rs_profile_opens","rs_streak","rs_today_games","rs_today_consoles","rs_session_start","rs_app_open_time","rs_last_pin_time","rs_game_meta","rs_session_history"];
+      keysToRemove.forEach(k=>{try{localStorage.removeItem(k);}catch{}});
+      setStatus({msg:"Done! Restarting...",type:"success"});
+      setTimeout(()=>invoke("restart_app").catch(()=>{}),1200);
     }catch(e){
       setStatus({msg:`Error: ${e}`,type:"error"});
     }
@@ -1558,7 +1630,7 @@ function GlobalSettings({config,onClose,onSaved}){
       <div style={{marginTop:"18px",background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:"10px",padding:"16px 18px"}}>
         <div style={{fontSize:"13px",fontWeight:700,color:"#f87171",marginBottom:"6px"}}>⚠️ Reset All Settings</div>
         <p style={{fontSize:"11px",color:"rgba(255,255,255,0.4)",lineHeight:1.6,marginBottom:"12px"}}>
-          Clears every emulator path, ROM folder, all settings, and your entire game library. Cover art files are also removed. This cannot be undone.
+          Clears <strong style={{color:"rgba(255,255,255,0.6)"}}>everything</strong> — emulator paths, ROM folders, game library, cover art, settings, your player profile, playtime stats, collections, and pinned posters. This cannot be undone.
         </p>
         {!resetConfirm
           ?<Btn variant="danger" onClick={()=>setResetConfirm(true)} style={{fontSize:"12px"}}>Reset All Settings...</Btn>
@@ -2196,7 +2268,7 @@ function ShelfCard({children,bgColor,bgDark,accent,onClick,tall=false,gameCount=
   );
 }
 
-function RowLabel({children,color}){return(<div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"2px"}}><span style={{fontFamily:"'Boogaloo',cursive",fontSize:"9px",letterSpacing:"4px",color:color||"rgba(255,255,255,0.14)",whiteSpace:"nowrap"}}>{children.toUpperCase()}</span><div style={{flex:1,height:"1px",background:"rgba(255,255,255,0.04)"}}/></div>);}
+function RowLabel({children,color}){return(<div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"2px"}}><span style={{fontFamily:"'Boogaloo',cursive",fontSize:"9px",letterSpacing:"4px",color:color||"rgba(255,255,255,0.14)",whiteSpace:"nowrap"}}>{children.toUpperCase()}</span><div style={{flex:1,height:"1px",background:"rgba(255,255,255,0.07)"}}/></div>);}
 
 function Plank(){
   return(<div style={{height:"20px",margin:"12px 0 0",background:T.plank,boxShadow:T.plankShadow,position:"relative"}}>
@@ -2370,6 +2442,19 @@ function FloatingLogo({children,accent,onClick,tall=false,gameCount=0}){
 
 function PatchNotesModal({onClose}){
   const notes=[
+    {version:"0.4.0",changes:[
+      "Added Achievement System With 34 Achievements And 5 Rarities",
+      "Added Collectibles Case — Unlock Trophies Through Achievements",
+      "Added GitHub Button Next To Version Pill",
+      "Added Game Ratings — Rate Any Game 1–10 From The Gear Menu",
+      "Added Favorites — Heart Icon On Cards, Filter To Show Only Favorites",
+      "Added Session History — Every Play Session Logged By Day In Your Profile",
+      "Added Playtime Display In Game Gear Menu",
+      "Added Most Played Console And Game Badges In Profile Stats",
+      "Added Profile History Tab Grouped By Day",
+      "Fixed Bug Where Removed ROM Folders Would Leave Ghost Games Behind",
+      "Various Bug Fixes And Improvements",
+    ]},
     {version:"0.3.0",changes:[
       "Added The Option To Create Collections",
       "Added Startup Animation",
@@ -2421,7 +2506,7 @@ function PatchNotesModal({onClose}){
             <div style={{position:"absolute",left:"-5px",top:"6px",width:"8px",height:"8px",borderRadius:"50%",background:"#c8a040",boxShadow:"0 0 10px rgba(200,160,64,0.5)"}}/>
             <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"10px"}}>
               <span style={{fontFamily:"'Boogaloo',cursive",fontSize:"18px",letterSpacing:"3px",color:"#c8a040"}}>v{version}</span>
-              {version==="0.3.0"&&<span style={{fontSize:"9px",background:"rgba(200,160,64,0.12)",border:"1px solid rgba(200,160,64,0.3)",color:"#c8a040",borderRadius:"4px",padding:"2px 7px",fontWeight:700,letterSpacing:"1px"}}>LATEST</span>}
+              {version==="0.4.0"&&<span style={{fontSize:"9px",background:"rgba(200,160,64,0.12)",border:"1px solid rgba(200,160,64,0.3)",color:"#c8a040",borderRadius:"4px",padding:"2px 7px",fontWeight:700,letterSpacing:"1px"}}>LATEST</span>}
             </div>
             <ul style={{listStyle:"none",display:"flex",flexDirection:"column",gap:"5px"}}>
               {changes.map((c,i)=>(
@@ -2437,7 +2522,10 @@ function PatchNotesModal({onClose}){
   );
 }
 
-function MainShelf({onOpen,onGlobalSettings,onTutorial,gameCounts,globalCfg,tutorialSeen,pinnedGames,onLaunchPinned,onUnpin,allGames,onLaunchGame,onOpenConsole,onOpenCollections,profile,onSaveProfile}){
+
+
+
+function MainShelf({onOpen,onGlobalSettings,onTutorial,gameCounts,globalCfg,tutorialSeen,pinnedGames,onLaunchPinned,onUnpin,allGames,onLaunchGame,onOpenConsole,onOpenCollections,profile,onSaveProfile,achievUnlocked,tryUnlock,gameMeta,onSetRating,onToggleFav,isFav,getRating,sessionHistory}){
   const showBadges=globalCfg?.showBadges!==false;
   const [showPatchNotes,setShowPatchNotes]=useState(false);
   const [showSearch,setShowSearch]=useState(false);
@@ -2465,25 +2553,32 @@ function MainShelf({onOpen,onGlobalSettings,onTutorial,gameCounts,globalCfg,tuto
     <div style={{height:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
       <PinnedPosters pinnedGames={pinnedGames} onLaunch={onLaunchPinned} onUnpin={onUnpin}/>
       {showPatchNotes&&<PatchNotesModal onClose={()=>setShowPatchNotes(false)}/>}
-      {showSearch&&<GlobalSearch allGames={allGames} onLaunch={onLaunchGame} onOpenConsole={onOpenConsole} onClose={()=>setShowSearch(false)}/>}
-      {/* Version pill — top left */}
-      <div style={{position:"absolute",top:"16px",left:"20px",zIndex:10}}>
+      {showSearch&&<GlobalSearch allGames={allGames} onLaunch={onLaunchGame} onOpenConsole={onOpenConsole} onClose={()=>setShowSearch(false)} onQuery={(q)=>{if(q.toLowerCase().trim()==="im so lonely")tryUnlock?.("secret_lonely");}}/>}
+      {/* Version pill + GitHub — top left */}
+      <div style={{position:"absolute",top:"16px",left:"20px",zIndex:20,display:"flex",gap:"6px"}}>
         <div onClick={()=>setShowPatchNotes(true)} style={{cursor:"pointer",background:"rgba(200,160,64,0.1)",border:"1px solid rgba(200,160,64,0.25)",borderRadius:"6px",padding:"4px 10px",fontSize:"10px",fontWeight:700,color:"rgba(200,160,64,0.7)",letterSpacing:"1px",fontFamily:"monospace",transition:"all 0.2s"}}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(200,160,64,0.18)";e.currentTarget.style.color="#c8a040";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(200,160,64,0.1)";e.currentTarget.style.color="rgba(200,160,64,0.7)";}}>
-          v0.3.0
+          v0.4.0
+        </div>
+        <div onClick={()=>invoke("open_url",{url:"https://github.com/RetroShelf-Sky/RetroShelf"}).catch(()=>{})} style={{cursor:"pointer",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"6px",padding:"4px 10px",fontSize:"10px",fontWeight:700,color:"rgba(255,255,255,0.3)",letterSpacing:"0.5px",fontFamily:"monospace",transition:"all 0.2s",display:"flex",alignItems:"center",gap:"5px"}}
+          onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.04)";e.currentTarget.style.color="rgba(255,255,255,0.3)";}}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
         </div>
       </div>
       <div style={{position:"absolute",top:"16px",right:"20px",zIndex:10,display:"flex",gap:"8px"}}>
         <div style={{position:"relative"}}>
-          <Btn onClick={onTutorial} style={{fontSize:"12px",display:"flex",alignItems:"center",gap:"5px"}}>📖 Setup Guide</Btn>
+          <Btn onClick={()=>onTutorial()} style={{fontSize:"12px",display:"flex",alignItems:"center",gap:"5px"}}>📖 Setup Guide</Btn>
           {!tutorialSeen&&(
             <div style={{position:"absolute",top:"-7px",right:"-7px",width:"18px",height:"18px",borderRadius:"50%",background:"#ef4444",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:900,color:"white",boxShadow:"0 0 10px #ef4444, 0 0 20px #ef4444aa",animation:"pulse 1.5s infinite",zIndex:11,pointerEvents:"none"}}>!</div>
           )}
         </div>
         <Btn onClick={onGlobalSettings} style={{fontSize:"12px",display:"flex",alignItems:"center",gap:"5px"}}>⚙ Settings</Btn>
-        <Btn onClick={()=>invoke("toggle_fullscreen").catch(()=>{})} style={{fontSize:"13px",padding:"6px 10px"}} title="Toggle Fullscreen">⛶</Btn>
+        <Btn onClick={()=>{invoke("toggle_fullscreen").catch(()=>{});setTimeout(()=>setIsFullscreen(window.innerHeight>=screen.height-10),300);}} style={{fontSize:"13px",padding:"6px 10px"}} title="Toggle Fullscreen">⛶</Btn>
       </div>
+      {/* Scaled central content */}
       <div style={{transform:`scale(${scale})`,transformOrigin:"center center",display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:"960px",paddingTop:isFullscreen?"20px":"46px",paddingBottom:"16px",marginTop:"-40px"}}>
         <div style={{textAlign:"center",marginBottom:"18px"}}>
         <div style={{fontFamily:"'Boogaloo',cursive",fontSize:"clamp(26px,3.5vw,50px)",letterSpacing:"10px",color:T.titleColor,textShadow:`0 0 60px ${T.titleGlow}`,lineHeight:1,marginBottom:"4px"}}>RETROSHELF</div>
@@ -2523,8 +2618,8 @@ function MainShelf({onOpen,onGlobalSettings,onTutorial,gameCounts,globalCfg,tuto
       </div>
         <div style={{marginTop:"16px",color:T.titleSub,fontSize:"10px",letterSpacing:"2px",fontWeight:600}}>Click any console to open its library</div>
       </div>
-      <div style={{position:"absolute",bottom:"22px",left:"24px",zIndex:10}}><ProfileBanner profile={profile} onClick={()=>setShowProfile(true)}/></div>
-      {showProfile&&<ProfileModal profile={profile} allGames={allGames} pinnedGames={pinnedGames} onClose={()=>setShowProfile(false)} onSave={onSaveProfile}/>}
+      <div style={{position:"absolute",bottom:"22px",left:"24px",zIndex:10}}><ProfileBanner profile={profile} onClick={()=>{setShowProfile(true);try{const c=(parseInt(localStorage.getItem("rs_profile_opens")||"0"))+1;localStorage.setItem("rs_profile_opens",c);}catch{}}}/></div>
+      {showProfile&&<ProfileModal profile={profile} allGames={allGames} pinnedGames={pinnedGames} onClose={()=>setShowProfile(false)} onSave={onSaveProfile} achievUnlocked={achievUnlocked} sessionHistory={sessionHistory}/>}
       {isFullscreen&&<div onClick={()=>invoke("exit_app").catch(()=>{})} style={{position:"absolute",bottom:"22px",left:"50%",transform:"translateX(-50%)",zIndex:10,display:"flex",alignItems:"center",gap:"6px",padding:"7px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:"8px",cursor:"pointer",userSelect:"none"}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(239,68,68,0.12)";}} onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.03)"}}><span>&#9211;</span><span style={{fontSize:"10px",fontWeight:600,color:"rgba(255,255,255,0.3)",letterSpacing:"1px"}}>EXIT</span></div>}
       <div onClick={onOpenCollections} style={{position:"absolute",bottom:"22px",right:"24px",zIndex:10,display:"flex",alignItems:"center",gap:"8px",padding:"9px 16px",background:"rgba(200,144,26,0.08)",border:"1px solid rgba(200,144,26,0.22)",borderRadius:"10px",cursor:"pointer",userSelect:"none"}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(200,144,26,0.18)";e.currentTarget.style.transform="translateY(-2px)";}} onMouseLeave={e=>{e.currentTarget.style.background="rgba(200,144,26,0.08)";e.currentTarget.style.transform="none";}}><span style={{fontSize:"16px"}}>&#128218;</span><div><div style={{fontSize:"11px",fontWeight:700,color:"rgba(200,144,26,0.85)",letterSpacing:"1px"}}>Collections</div><div style={{fontSize:"8px",color:"rgba(200,144,26,0.4)",letterSpacing:"1.5px",fontWeight:600}}>GROUP YOUR GAMES</div></div></div>
     </div>
@@ -2532,7 +2627,7 @@ function MainShelf({onOpen,onGlobalSettings,onTutorial,gameCounts,globalCfg,tuto
 }
 
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
-function GlobalSearch({allGames,onLaunch,onOpenConsole,onClose}){
+function GlobalSearch({allGames,onLaunch,onOpenConsole,onClose,onQuery}){
   const [query,setQuery]=useState("");
   const inputRef=useRef(null);
 
@@ -2542,6 +2637,11 @@ function GlobalSearch({allGames,onLaunch,onOpenConsole,onClose}){
     window.addEventListener("keydown",handler);
     return()=>window.removeEventListener("keydown",handler);
   },[]);
+
+  const handleQuery=(val)=>{
+    setQuery(val);
+    if(onQuery)onQuery(val);
+  };
 
   const results=query.trim().length<1?[]:allGames.filter(g=>(g.title||"").toLowerCase().includes(query.toLowerCase())).slice(0,30);
 
@@ -2554,7 +2654,7 @@ function GlobalSearch({allGames,onLaunch,onOpenConsole,onClose}){
           <input
             ref={inputRef}
             value={query}
-            onChange={e=>setQuery(e.target.value)}
+            onChange={e=>handleQuery(e.target.value)}
             placeholder="Search all games..."
             style={{width:"100%",padding:"14px 16px 14px 46px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.18)",borderRadius:"12px",color:"white",fontSize:"16px",fontFamily:"'Nunito',sans-serif",fontWeight:600,letterSpacing:"0.3px"}}
           />
@@ -2672,19 +2772,13 @@ function CollectionCard({collection,onClick,onDelete}){
       style={{position:"relative",cursor:"pointer",borderRadius:"12px",background:`linear-gradient(145deg,${col.bg},#060300)`,border:`2px solid ${hov?col.border:col.border+"55"}`,transition:"all 0.2s",transform:hov?"translateY(-4px) scale(1.02)":"none",boxShadow:hov?`0 20px 50px rgba(0,0,0,0.8),0 0 20px ${col.accent}20`:"0 8px 24px rgba(0,0,0,0.6)",overflow:"hidden"}}
       onClick={onClick}
     >
-      {/* Cover preview grid */}
       <div style={{height:"110px",display:"grid",gridTemplateColumns:"1fr 1fr",gridTemplateRows:"1fr 1fr",gap:"2px",background:"rgba(0,0,0,0.4)",overflow:"hidden",borderRadius:"10px 10px 0 0"}}>
         {previewGames.length>0
-          ?previewGames.map((g,i)=>(
-            <CollCoverThumb key={i} game={g} accent={col.accent}/>
-          ))
+          ?previewGames.map((g,i)=>(<CollCoverThumb key={i} game={g} accent={col.accent}/>))
           :<div style={{gridColumn:"1/-1",gridRow:"1/-1",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"36px",opacity:0.2}}>{collection.icon}</div>
         }
-        {previewGames.length>0&&previewGames.length<4&&Array.from({length:4-previewGames.length}).map((_,i)=>(
-          <div key={`e${i}`} style={{background:"rgba(0,0,0,0.3)"}}/>
-        ))}
+        {previewGames.length>0&&previewGames.length<4&&Array.from({length:4-previewGames.length}).map((_,i)=>(<div key={`e${i}`} style={{background:"rgba(0,0,0,0.3)"}}/>))}
       </div>
-      {/* Info */}
       <div style={{padding:"12px 14px 14px",display:"flex",alignItems:"center",gap:"10px"}}>
         <div style={{fontSize:"22px",lineHeight:1}}>{collection.icon}</div>
         <div style={{flex:1,minWidth:0}}>
@@ -2692,10 +2786,9 @@ function CollectionCard({collection,onClick,onDelete}){
           <div style={{fontSize:"10px",color:col.accent,fontWeight:600,letterSpacing:"1px",marginTop:"2px",opacity:0.75}}>{collection.games.length} GAME{collection.games.length!==1?"S":""}</div>
         </div>
       </div>
-      {/* Delete btn */}
       {hov&&(
         <div onClick={e=>{e.stopPropagation();onDelete();}} title="Delete collection"
-          style={{position:"absolute",top:"6px",right:"6px",width:"20px",height:"20px",borderRadius:"50%",background:"rgba(239,68,68,0.85)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"white",cursor:"pointer",zIndex:5,boxShadow:"0 2px 8px rgba(0,0,0,0.8)"}}>✕</div>
+          style={{position:"absolute",top:"6px",right:"6px",width:"20px",height:"20px",borderRadius:"50%",background:col.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"rgba(0,0,0,0.85)",fontWeight:900,cursor:"pointer",zIndex:5,boxShadow:`0 2px 8px rgba(0,0,0,0.8),0 0 6px ${col.accent}66`}}>✕</div>
       )}
     </div>
   );
@@ -3054,6 +3147,204 @@ function useProfile(){
 }
 
 
+
+
+// ─── GAME META (ratings, favorites, session history) ─────────────────────────
+function useGameMeta(){
+  const [meta,setMeta]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("rs_game_meta")||"{}");}catch{return {};}
+  });
+  const save=(next)=>{setMeta(next);try{localStorage.setItem("rs_game_meta",JSON.stringify(next));}catch{}};
+  const key=(consoleId,gameId)=>`${consoleId}:${gameId}`;
+  const getMeta=(consoleId,gameId)=>meta[key(consoleId,gameId)]||{};
+  const setRating=(consoleId,gameId,r)=>save({...meta,[key(consoleId,gameId)]:{...getMeta(consoleId,gameId),rating:r}});
+  const toggleFav=(consoleId,gameId)=>save({...meta,[key(consoleId,gameId)]:{...getMeta(consoleId,gameId),fav:!getMeta(consoleId,gameId).fav}});
+  const isFav=(consoleId,gameId)=>!!getMeta(consoleId,gameId).fav;
+  const getRating=(consoleId,gameId)=>getMeta(consoleId,gameId).rating||0;
+  return{getMeta,setRating,toggleFav,isFav,getRating,meta};
+}
+
+function useSessionHistory(){
+  const [history,setHistory]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("rs_session_history")||"[]");}catch{return [];}
+  });
+  const addSession=(consoleId,gameId,title,durationSeconds)=>{
+    if(durationSeconds<30)return;
+    const entry={consoleId,gameId,title,duration:durationSeconds,date:Date.now(),id:Date.now().toString()};
+    const next=[entry,...history].slice(0,200);
+    setHistory(next);
+    try{localStorage.setItem("rs_session_history",JSON.stringify(next));}catch{}
+  };
+  return{history,addSession};
+}
+
+// ─── ACHIEVEMENT SYSTEM ───────────────────────────────────────────────────────
+const RARITY={
+  common:  {label:"Common",    color:"#a0a0b0", glow:"rgba(160,160,176,0.4)"},
+  uncommon:{label:"Uncommon",  color:"#4ade80", glow:"rgba(74,222,128,0.4)"},
+  rare:    {label:"Rare",      color:"#60a5fa", glow:"rgba(96,165,250,0.4)"},
+  ultraRare:{label:"Ultra Rare",color:"#e879f9",glow:"rgba(232,121,249,0.5)"},
+  hidden:  {label:"Hidden",    color:"#f59e0b", glow:"rgba(245,158,11,0.5)"},
+};
+
+const COLLECTIBLES={
+  golden_cd:{id:"golden_cd",name:"Golden CD",  icon:"💿",color:"#f0c060",desc:"500 games in your library"},
+  skeleton: {id:"skeleton", name:"Skeleton",   icon:"💀",color:"#e0e0f0",desc:"1000 total hours played"},
+  heart:    {id:"heart",    name:"Heart",       icon:"❤️", color:"#f87171",desc:"250 hours in one game"},
+  desk_fan: {id:"desk_fan", name:"Desk Fan",   icon:"🌀",color:"#67e8f9",desc:"You found the secret"},
+  trophy:   {id:"trophy",   name:"The Trophy", icon:"🏆",color:"#ffd700",desc:"Unlock every achievement"},
+};
+
+const ALL_ACHIEVEMENTS=[
+  // Library
+  {id:"lib_5",              rarity:"common",   icon:"📦",name:"Starting Out",              desc:"Add 5 games to your library",                                  cat:"Library"},
+  {id:"lib_10",             rarity:"common",   icon:"📚",name:"Growing Collection",        desc:"Add 10 games to your library",                                 cat:"Library"},
+  {id:"lib_20",             rarity:"common",   icon:"🗄",name:"Stacking Up",               desc:"Add 20 games to your library",                                 cat:"Library"},
+  {id:"lib_50",             rarity:"uncommon", icon:"📀",name:"Serious Collector",         desc:"Add 50 games to your library",                                 cat:"Library"},
+  {id:"lib_100",            rarity:"uncommon", icon:"🏛",name:"The Librarian",             desc:"Add 100 games to your library",                                cat:"Library"},
+  {id:"lib_250",            rarity:"rare",     icon:"👑",name:"Legendary Vault",           desc:"Add 250 games to your library",                                cat:"Library"},
+  {id:"lib_500",            rarity:"ultraRare",icon:"💿",name:"The Archive",               desc:"Add 500 games to your library",                                cat:"Library",   trophy:"golden_cd"},
+  {id:"all_consoles_50",    rarity:"rare",     icon:"📦",name:"Fully Loaded",              desc:"Have 50+ games on every console",                              cat:"Library"},
+  // Playtime
+  {id:"play_10h",           rarity:"common",   icon:"⏱",name:"Just Getting Started",      desc:"Play for 10 total hours",                                      cat:"Playtime"},
+  {id:"play_50h",           rarity:"uncommon", icon:"⌛",name:"Dedicated Player",           desc:"Play for 50 total hours",                                      cat:"Playtime"},
+  {id:"play_100h",          rarity:"uncommon", icon:"💯",name:"Century Club",              desc:"Play for 100 total hours",                                     cat:"Playtime"},
+  {id:"play_250h",          rarity:"rare",     icon:"🔥",name:"No Life",                   desc:"Play for 250 total hours",                                     cat:"Playtime"},
+  {id:"play_500h",          rarity:"rare",     icon:"🌟",name:"Veteran",                   desc:"Play for 500 total hours",                                     cat:"Playtime"},
+  {id:"play_1000h",         rarity:"ultraRare",icon:"💀",name:"Gone",                      desc:"Play for 1000 total hours",                                    cat:"Playtime",  trophy:"skeleton"},
+  {id:"play_1g_100h",       rarity:"rare",     icon:"⭐",name:"Obsessed",                  desc:"Log 100 hours on a single game",                               cat:"Playtime"},
+  {id:"play_1g_250h",       rarity:"ultraRare",icon:"❤️", name:"True Fan",                desc:"Log 250 hours on a single game",                               cat:"Playtime",  trophy:"heart"},
+  {id:"play_10_oneday",     rarity:"uncommon", icon:"🎲",name:"Variety Day",               desc:"Play 10 different games in one day",                           cat:"Playtime"},
+  {id:"session_3h",         rarity:"uncommon", icon:"🎯",name:"In The Zone",               desc:"Play a game for over 3 hours in one session",                  cat:"Playtime"},
+  {id:"streak_30",          rarity:"rare",     icon:"📅",name:"Dedicated",                 desc:"Play every day for 30 days straight",                          cat:"Playtime"},
+  {id:"all_consoles_1h",    rarity:"rare",     icon:"🕹",name:"Console Master",            desc:"Play on every console for over an hour each",                  cat:"Playtime"},
+  {id:"play_all_consoles_10m",rarity:"rare",   icon:"🌐",name:"Console Connoisseur",       desc:"Play on every console for at least 10 minutes each",           cat:"Playtime"},
+  // Display
+  {id:"pin_12",             rarity:"common",   icon:"📌",name:"Full Wall",                 desc:"Pin all 12 game posters",                                      cat:"Display"},
+  // Collections
+  {id:"coll_5",             rarity:"common",   icon:"📂",name:"Curator",                   desc:"Create 5 collections",                                         cat:"Collections"},
+  {id:"coll_all_consoles",  rarity:"uncommon", icon:"🌍",name:"Everything Shelf",          desc:"Have a collection with games from every console",              cat:"Collections"},
+  // Profile
+  {id:"profile",            rarity:"common",   icon:"👤",name:"Identity",                  desc:"Create your profile",                                          cat:"Profile"},
+  // Hidden
+  {id:"secret_name",        rarity:"hidden",   icon:"🌀",name:"MMAJRJRS",                  desc:"???",                                                          cat:"Hidden",    trophy:"desk_fan"},
+  {id:"secret_3am",         rarity:"hidden",   icon:"🌙",name:"Night Owl",                 desc:"The world is quiet. The shelf glows. Most are asleep.",         cat:"Hidden"},
+  {id:"secret_fast",        rarity:"hidden",   icon:"⚡",name:"No Hesitation",             desc:"You knew exactly what you wanted before the dust had settled.",  cat:"Hidden"},
+  {id:"secret_unpin",       rarity:"hidden",   icon:"🤔",name:"Changed My Mind",           desc:"You put it up. Then immediately reconsidered.",                 cat:"Hidden"},
+  {id:"secret_lonely",      rarity:"hidden",   icon:"🥺",name:"Me Too",                    desc:"Some searches say more about the searcher than the search.",    cat:"Hidden"},
+  {id:"secret_bio_long",    rarity:"hidden",   icon:"✍",name:"J.K. Rowling Over Here SMH",desc:"You had a lot to say about yourself. We respect the commitment.",cat:"Hidden"},
+  {id:"secret_all_pins",    rarity:"hidden",   icon:"📌",name:"The Whole Collection",      desc:"Every corner of the shelf, represented on the wall.",           cat:"Hidden"},
+  {id:"secret_idle",        rarity:"hidden",   icon:"💤",name:"Why Are You Here",          desc:"The shelf waited. And waited. And you never came back.",         cat:"Hidden"},
+  {id:"all_achievements",   rarity:"ultraRare",icon:"🏆",name:"Completionist",             desc:"Unlock every other achievement",                                cat:"Hidden",    trophy:"trophy"},
+];
+
+function useAchievements(){
+  const [unlocked,setUnlocked]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("rs_achievements")||"{}");}catch{return {};}
+  });
+  const unlock=(id)=>{
+    if(unlocked[id])return null;
+    const next={...unlocked,[id]:{unlockedAt:Date.now()}};
+    setUnlocked(next);
+    try{localStorage.setItem("rs_achievements",JSON.stringify(next));}catch{}
+    return ALL_ACHIEVEMENTS.find(a=>a.id===id)||null;
+  };
+  return{unlocked,unlock};
+}
+
+function AchievementToast({achievement,onDone}){
+  useEffect(()=>{const t=setTimeout(onDone,3800);return()=>clearTimeout(t);},[]);
+  const r=RARITY[achievement.rarity]||RARITY.common;
+  return(
+    <div style={{position:"fixed",bottom:"80px",right:"24px",zIndex:9999,animation:"slideUp 0.4s cubic-bezier(0.34,1.5,0.64,1)",display:"flex",alignItems:"center",gap:"12px",padding:"12px 18px",background:"linear-gradient(135deg,#120e06,#1e1608)",border:`1px solid ${r.color}66`,borderRadius:"14px",boxShadow:`0 16px 40px rgba(0,0,0,0.85),0 0 20px ${r.glow}`,maxWidth:"280px",pointerEvents:"none"}}>
+      <div style={{fontSize:"28px",lineHeight:1}}>{achievement.rarity==="hidden"?"🎉":achievement.icon}</div>
+      <div>
+        <div style={{fontSize:"8px",letterSpacing:"2px",color:r.color,fontWeight:700,marginBottom:"2px"}}>ACHIEVEMENT UNLOCKED · {r.label.toUpperCase()}</div>
+        <div style={{fontSize:"13px",fontWeight:800,color:"rgba(255,255,255,0.95)",lineHeight:1.2}}>{achievement.rarity==="hidden"?"Hidden Achievement":achievement.name}</div>
+        {achievement.trophy&&<div style={{fontSize:"9px",color:COLLECTIBLES[achievement.trophy].color,marginTop:"3px",fontWeight:700}}>🎁 Collectible Unlocked: {COLLECTIBLES[achievement.trophy].name} Trophy</div>}
+      </div>
+    </div>
+  );
+}
+
+function CollectiblesCase({unlocked,accentColor,mainColor}){
+  const total=Object.keys(COLLECTIBLES).length;
+  const earned=ALL_ACHIEVEMENTS.filter(a=>a.trophy&&unlocked[a.id]).map(a=>COLLECTIBLES[a.trophy]);
+  const header=(
+    <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"10px"}}>
+      <div style={{fontSize:"9px",letterSpacing:"2px",color:accentColor,fontWeight:700,opacity:0.7}}>COLLECTIBLES</div>
+      <div style={{fontSize:"9px",fontWeight:700,color:accentColor,opacity:0.5}}>{earned.length}/{total}</div>
+    </div>
+  );
+  if(earned.length===0)return(
+    <div style={{marginTop:"4px"}}>
+      {header}
+      <div style={{fontSize:"10px",color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>No collectibles earned yet.</div>
+    </div>
+  );
+  return(
+    <div style={{marginTop:"4px"}}>
+      {header}
+      <div style={{display:"flex",gap:"10px",flexWrap:"wrap"}}>
+        {earned.map(tr=>(
+          <div key={tr.id} title={`${tr.name} — ${tr.desc}`}
+            style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"10px 12px",borderRadius:"12px",background:`${mainColor}cc`,border:`1px solid ${tr.color}55`,transition:"all 0.2s",boxShadow:`0 0 16px ${tr.color}33`}}>
+            <div style={{fontSize:"28px"}}>{tr.icon}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AchievementsTab({unlocked,accentColor,mainColor}){
+  const rarityOrder=["common","uncommon","rare","ultraRare","hidden"];
+  const sorted=[...ALL_ACHIEVEMENTS].sort((a,b)=>rarityOrder.indexOf(a.rarity)-rarityOrder.indexOf(b.rarity));
+  const total=ALL_ACHIEVEMENTS.length;
+  const count=ALL_ACHIEVEMENTS.filter(a=>unlocked[a.id]).length;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+      {/* Progress */}
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:"5px"}}>
+          <div style={{fontSize:"9px",color:"rgba(255,255,255,0.3)"}}>{count} / {total} unlocked</div>
+          <div style={{fontSize:"9px",fontWeight:700,color:accentColor}}>{Math.round(count/total*100)}%</div>
+        </div>
+        <div style={{height:"5px",background:"rgba(255,255,255,0.06)",borderRadius:"3px",overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${count/total*100}%`,background:`linear-gradient(90deg,${accentColor}88,${accentColor})`,borderRadius:"3px",transition:"width 0.5s"}}/>
+        </div>
+      </div>
+      {/* List — sorted by rarity */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"7px",maxHeight:"300px",overflowY:"auto"}}>
+        {sorted.map(a=>{
+          const done=!!unlocked[a.id];
+          const r=RARITY[a.rarity]||RARITY.common;
+          const isHidden=a.rarity==="hidden"&&!done;
+          const date=done?new Date(unlocked[a.id].unlockedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"}):null;
+          return(
+            <div key={a.id} style={{display:"flex",alignItems:"center",gap:"10px",padding:"9px 11px",borderRadius:"10px",background:done?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.25)",border:`1px solid ${done?r.color+"44":"rgba(255,255,255,0.04)"}`,opacity:done?1:0.5,position:"relative",overflow:"hidden"}}>
+              {done&&<div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:`linear-gradient(90deg,transparent,${r.color}66,transparent)`}}/>}
+              <div style={{fontSize:"18px",filter:done?"none":"grayscale(1)",flexShrink:0}}>{isHidden?"🔒":a.icon}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:"10px",fontWeight:800,color:done?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.35)",lineHeight:1.2}}>{isHidden?"Hidden Achievement":a.name}</div>
+                <div style={{fontSize:"8px",color:r.color,fontWeight:700,letterSpacing:"0.5px",marginTop:"1px"}}>{r.label}</div>
+                {done&&<div style={{fontSize:"8px",color:"rgba(255,255,255,0.25)",marginTop:"1px"}}>{a.desc==="???"?"A secret well kept.":a.desc}</div>}
+                {!done&&isHidden&&<div style={{fontSize:"8px",color:`${r.color}88`,marginTop:"1px",fontStyle:"italic"}}>{a.desc}</div>}
+                {!done&&!isHidden&&<div style={{fontSize:"8px",color:"rgba(255,255,255,0.25)",marginTop:"1px"}}>{a.desc}</div>}
+                {date&&<div style={{fontSize:"7px",color:`${r.color}88`,marginTop:"2px",fontWeight:700}}>✓ {date}</div>}
+              </div>
+              {a.trophy&&done&&<div title={COLLECTIBLES[a.trophy].name} style={{fontSize:"14px",flexShrink:0}}>{COLLECTIBLES[a.trophy].icon}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── GAME META (ratings, favorites, session history) ─────────────────────────
+
+
 function ProfileBanner({profile,onClick}){
   const [hov,setHov]=useState(false);
   const hasProfile=profile&&profile.username;
@@ -3066,7 +3357,6 @@ function ProfileBanner({profile,onClick}){
       onMouseLeave={()=>setHov(false)}
       style={{position:"absolute",bottom:"22px",left:"24px",zIndex:10,borderRadius:"14px",cursor:"pointer",transition:"all 0.2s",userSelect:"none",transform:hov?"translateY(-2px)":"none",boxShadow:hov?`0 12px 32px rgba(0,0,0,0.7),0 0 0 1px ${ac}44`:"0 4px 16px rgba(0,0,0,0.5)",overflow:"hidden",border:`1px solid ${hov?ac+"66":ac+"28"}`}}
     >
-      {/* Bottom row: avatar + text */}
       <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 14px 8px 8px",background:hov?`${mc}ee`:`${mc}dd`}}>
         <div style={{width:"36px",height:"36px",borderRadius:"50%",overflow:"hidden",flexShrink:0,background:mc,border:`2px solid ${ac}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.6)",position:"relative"}}>
           {hasProfile&&profile.avatar
@@ -3089,9 +3379,10 @@ function ProfileBanner({profile,onClick}){
 
 
 
-function ProfileModal({profile,allGames,pinnedGames,onClose,onSave}){
+function ProfileModal({profile,allGames,pinnedGames,onClose,onSave,achievUnlocked={},sessionHistory=[]}){
   const collections=(() => { try{return JSON.parse(localStorage.getItem("rs_collections")||"[]");}catch{return [];} })();
   const [tab,setTab]=useState(profile?.username?"stats":"edit");
+  const [expandedDay,setExpandedDay]=useState(null);
   const [username,setUsername]=useState(profile?.username||"");
   const [avatar,setAvatar]=useState(profile?.avatar||null);
   const [accentColor,setAccentColor]=useState(profile?.accentColor||"#c8901a");
@@ -3130,6 +3421,25 @@ function ProfileModal({profile,allGames,pinnedGames,onClose,onSave}){
     .filter(g=>(g.playtime_seconds||0)>0)
     .sort((a,b)=>(b.playtime_seconds||0)-(a.playtime_seconds||0))
     .slice(0,5);
+
+  const topPlayConsole=(()=>{
+    const cCounts={};
+    allGames.forEach(g=>{cCounts[g.consoleId]=(cCounts[g.consoleId]||0)+(g.playtime_seconds||0);});
+    return Object.entries(cCounts).sort((a,b)=>b[1]-a[1])[0]||null;
+  })();
+  const topPlayGame=[...allGames].sort((a,b)=>(b.playtime_seconds||0)-(a.playtime_seconds||0))[0]||null;
+  const sessionGroups=(()=>{
+    const groups={};
+    sessionHistory.forEach(s=>{
+      const day=new Date(s.date).toDateString();
+      if(!groups[day])groups[day]=[];
+      groups[day].push(s);
+    });
+    return groups;
+  })();
+  const sessionDays=Object.keys(sessionGroups).sort((a,b)=>new Date(b)-new Date(a));
+  const todayStr=new Date().toDateString();
+  const yesterdayStr=new Date(Date.now()-86400000).toDateString();
 
   const handleAvatarUpload=(e)=>{
     const file=e.target.files?.[0];
@@ -3174,7 +3484,7 @@ function ProfileModal({profile,allGames,pinnedGames,onClose,onSave}){
           {/* Tabs — only show if profile exists */}
           {!isNew&&(
             <div style={{display:"flex",gap:"4px"}}>
-              {["stats","edit"].map(t=>(
+              {["stats","history","achievements","edit"].map(t=>(
                 <div key={t} onClick={()=>setTab(t)}
                   style={{padding:"5px 12px",borderRadius:"6px",fontSize:"10px",fontWeight:700,letterSpacing:"1px",cursor:"pointer",background:tab===t?`${accentColor}28`:"transparent",color:tab===t?accentColor:"rgba(255,255,255,0.3)",border:`1px solid ${tab===t?`${accentColor}66`:"transparent"}`,transition:"all 0.15s"}}>
                   {t.toUpperCase()}
@@ -3191,7 +3501,7 @@ function ProfileModal({profile,allGames,pinnedGames,onClose,onSave}){
             <div style={{display:"flex",flexDirection:"column",gap:"12px"}}>
               {/* Big stats row */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginBottom:"4px"}}>
-                <StatBox value={totalGames} label="Games Owned" accent={accentColor} mainColor={mainColor}/>
+                <StatBox value={totalGames} label="Games" accent={accentColor} mainColor={mainColor}/>
                 <StatBox value={consoleCount} label="Consoles" accent={accentColor} mainColor={mainColor}/>
                 <StatBox value={collectionCount} label="Collections" accent={accentColor} mainColor={mainColor}/>
               </div>
@@ -3204,31 +3514,83 @@ function ProfileModal({profile,allGames,pinnedGames,onClose,onSave}){
                 </div>
                 <div style={{fontSize:"24px",opacity:0.2}}>⏱</div>
               </div>
-              {/* Top 5 games */}
-              {top5Games.length>0&&(
-                <div style={{background:`${mainColor}cc`,borderRadius:"10px",border:`1px solid ${accentColor}30`,overflow:"hidden"}}>
-                  <div style={{padding:"10px 14px 6px",fontSize:"9px",letterSpacing:"2px",color:`${accentColor}88`,fontWeight:700}}>MOST PLAYED GAMES</div>
-                  {top5Games.map((g,i)=>{
-                    const pct=Math.round(((g.playtime_seconds||0)/Math.max(top5Games[0].playtime_seconds,1))*100);
-                    return(
-                      <div key={`${g.consoleId}-${g.id}`} style={{padding:"8px 14px",borderTop:`1px solid ${accentColor}20`,display:"flex",alignItems:"center",gap:"10px"}}>
-                        <div style={{fontSize:"11px",fontWeight:700,color:accentColor,width:"14px",textAlign:"right",flexShrink:0}}>{i+1}</div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:"11px",fontWeight:700,color:accentColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:"3px"}}>{g.title}</div>
-                          <div style={{height:"3px",background:"rgba(255,255,255,0.06)",borderRadius:"2px",overflow:"hidden"}}>
-                            <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${accentColor}66,${accentColor})`,borderRadius:"2px",transition:"width 0.5s ease"}}/>
-                          </div>
-                        </div>
-                        <div style={{fontSize:"10px",fontWeight:700,color:accentColor,flexShrink:0,minWidth:"44px",textAlign:"right"}}>{formatPlaytime(g.playtime_seconds||0)}</div>
-                      </div>
-                    );
-                  })}
+              {/* Most played console + game */}
+              {(topPlayConsole||topPlayGame)&&(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
+                  {topPlayConsole&&<div style={{padding:"10px 12px",background:`${mainColor}cc`,borderRadius:"10px",border:`1px solid ${accentColor}30`}}>
+                    <div style={{fontSize:"8px",letterSpacing:"1.5px",color:`${accentColor}88`,fontWeight:700,marginBottom:"4px"}}>MOST PLAYED CONSOLE</div>
+                    <div style={{fontSize:"12px",fontWeight:800,color:accentColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{CONSOLES[topPlayConsole[0]]?.label||topPlayConsole[0]}</div>
+                    <div style={{fontSize:"9px",color:`${accentColor}66`,marginTop:"2px"}}>{formatPlaytime(topPlayConsole[1])}</div>
+                  </div>}
+                  {topPlayGame&&(topPlayGame.playtime_seconds||0)>0&&<div style={{padding:"10px 12px",background:`${mainColor}cc`,borderRadius:"10px",border:`1px solid ${accentColor}30`}}>
+                    <div style={{fontSize:"8px",letterSpacing:"1.5px",color:`${accentColor}88`,fontWeight:700,marginBottom:"4px"}}>MOST PLAYED GAME</div>
+                    <div style={{fontSize:"12px",fontWeight:800,color:accentColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{topPlayGame.title}</div>
+                    <div style={{fontSize:"9px",color:`${accentColor}66`,marginTop:"2px"}}>{formatPlaytime(topPlayGame.playtime_seconds||0)}</div>
+                  </div>}
                 </div>
               )}
               {totalGames===0&&(
                 <div style={{textAlign:"center",padding:"16px",color:"rgba(255,255,255,0.2)",fontSize:"12px",fontStyle:"italic"}}>Add some games to see your stats!</div>
               )}
             </div>
+          )}
+
+          {/* HISTORY TAB */}
+          {tab==="history"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+              {sessionHistory.length===0
+                ?<div style={{textAlign:"center",padding:"24px",color:"rgba(255,255,255,0.2)",fontSize:"12px",fontStyle:"italic"}}>No sessions recorded yet. Launch a game to start your history!</div>
+                :<div style={{maxHeight:"340px",overflowY:"auto",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  {sessionDays.map(day=>{
+                    const sessions=sessionGroups[day];
+                    const isOpen=expandedDay===day;
+                    const dayTotal=sessions.reduce((s,x)=>s+(x.duration||0),0);
+                    const label=day===todayStr?"Today":day===yesterdayStr?"Yesterday":new Date(day).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+                    const dur=dayTotal>=3600?`${Math.floor(dayTotal/3600)}h ${Math.floor((dayTotal%3600)/60)}m`:dayTotal>=60?`${Math.floor(dayTotal/60)}m`:`${dayTotal}s`;
+                    return(
+                      <div key={day}>
+                        <div onClick={()=>setExpandedDay(isOpen?null:day)}
+                          style={{display:"flex",alignItems:"center",gap:"10px",padding:"9px 12px",borderRadius:"8px",background:isOpen?`${accentColor}14`:"rgba(255,255,255,0.04)",border:`1px solid ${isOpen?accentColor+"33":"rgba(255,255,255,0.06)"}`,cursor:"pointer",transition:"all 0.15s",userSelect:"none"}}>
+                          <div style={{fontSize:"11px",fontWeight:800,color:isOpen?accentColor:"rgba(255,255,255,0.7)",flex:1}}>{label}</div>
+                          <div style={{fontSize:"9px",color:"rgba(255,255,255,0.3)"}}>{sessions.length} session{sessions.length!==1?"s":""}</div>
+                          <div style={{fontSize:"10px",fontWeight:700,color:accentColor}}>{dur}</div>
+                          <div style={{fontSize:"9px",color:"rgba(255,255,255,0.3)",transition:"transform 0.2s",transform:isOpen?"rotate(180deg)":"none"}}>▾</div>
+                        </div>
+                        {isOpen&&(
+                          <div style={{display:"flex",flexDirection:"column",gap:"3px",marginTop:"3px",paddingLeft:"8px"}}>
+                            {sessions.map((s,i)=>{
+                              const timeStr=new Date(s.date).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+                              const sdur=s.duration>=3600?`${Math.floor(s.duration/3600)}h ${Math.floor((s.duration%3600)/60)}m`:s.duration>=60?`${Math.floor(s.duration/60)}m`:`${s.duration}s`;
+                              const con=CONSOLES[s.consoleId];
+                              return(
+                                <div key={s.id||i} style={{display:"flex",alignItems:"center",gap:"10px",padding:"7px 12px",borderRadius:"7px",background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.04)"}}>
+                                  <div style={{width:"3px",height:"28px",borderRadius:"2px",background:con?.accent||accentColor,flexShrink:0}}/>
+                                  <div style={{flex:1,minWidth:0}}>
+                                    <div style={{fontSize:"10px",fontWeight:700,color:"rgba(255,255,255,0.8)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.title}</div>
+                                    <div style={{fontSize:"8px",color:"rgba(255,255,255,0.25)",marginTop:"1px"}}>{con?.label||s.consoleId} · {timeStr}</div>
+                                  </div>
+                                  <div style={{fontSize:"10px",fontWeight:700,color:accentColor,flexShrink:0}}>{sdur}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              }
+            </div>
+          )}
+
+          {/* ACHIEVEMENTS TAB */}
+          {tab==="achievements"&&(
+            <AchievementsTab unlocked={achievUnlocked} accentColor={accentColor} mainColor={mainColor}/>
+          )}
+
+          {/* COLLECTIBLES — shown at bottom of stats tab */}
+          {tab==="stats"&&(
+            <CollectiblesCase unlocked={achievUnlocked} accentColor={accentColor} mainColor={mainColor}/>
           )}
 
           {/* EDIT TAB */}
@@ -3437,7 +3799,7 @@ function StartupAnimation({onDone}){
           fontSize:"9px",letterSpacing:"5px",color:"rgba(200,144,26,0.3)",
           fontWeight:700,marginBottom:"28px",
           opacity:logoVisible?1:0,transition:"opacity 0.8s ease 0.4s",
-        }}>v0.3.0</div>
+        }}>v0.4.0</div>
 
         {/* RETROSHELF logo with chromatic aberration */}
         <div style={{position:"relative",marginBottom:"10px"}}>
@@ -3565,9 +3927,18 @@ export default function App(){
   const [booting,setBooting]=useState(true);
   const [view,setView]=useState("shelf");
   const {profile,save:saveProfile}=useProfile();
-  const [showCollections,setShowCollections]=useState(false);
+  const {unlocked:achievUnlocked,unlock:unlockAchiev}=useAchievements();
+  const {getMeta,setRating,toggleFav,isFav,getRating,meta:gameMeta}=useGameMeta();
+  const {history:sessionHistory,addSession}=useSessionHistory();
+  useEffect(()=>{window._addSession=addSession;return()=>{delete window._addSession;};},[addSession]);
+  const [pendingToast,setPendingToast]=useState(null);
+  const tryUnlock=(id)=>{
+    const a=unlockAchiev(id);
+    if(a)setPendingToast(a);
+  };
   const [activeId,setActiveId]=useState(null);
   const [picker,setPicker]=useState(null);
+  const [showCollections,setShowCollections]=useState(false);
   const [showGlobalSettings,setShowGlobalSettings]=useState(false);
   const [appConfig,setAppConfig]=useState(null);
   const [gameCounts,setGameCounts]=useState({});
@@ -3604,7 +3975,18 @@ export default function App(){
     const updated=pinnedGames.filter(p=>!(p.gameId===pinned.gameId&&p.consoleId===pinned.consoleId));
     setPinnedGames(updated);
     try{ localStorage.setItem("rs_pinned",JSON.stringify(updated)); }catch{}
+    // Check if pinned very recently (within 10s)
+    try{
+      const lastPin=parseInt(localStorage.getItem("rs_last_pin_time")||"0");
+      if(lastPin&&Date.now()-lastPin<10000)tryUnlock("secret_unpin");
+    }catch{}
   };
+
+  useEffect(()=>{
+    if(pinnedGames.length>=12)tryUnlock("pin_12");
+    const pinnedConsoles=new Set(pinnedGames.map(p=>p.consoleId));
+    if(Object.keys(CONSOLES).every(cid=>pinnedConsoles.has(cid)))tryUnlock("secret_all_pins");
+  },[pinnedGames.length]);
 
   const openTutorial=()=>{
     setView("tutorial");
@@ -3630,11 +4012,74 @@ export default function App(){
       setGlobalCfg(cfg?.global||{});
     }).catch(()=>{});
     loadCounts();
-    // Run startup scan after a short delay to let app settle
     setTimeout(()=>{
       invoke("startup_scan").then(()=>loadCounts()).catch(()=>{});
     },1500);
   },[]);
+
+  // Check library/playtime achievements whenever games change
+  useEffect(()=>{
+    const n=allGames.length;
+    if(n>=5)tryUnlock("lib_5");
+    if(n>=10)tryUnlock("lib_10");
+    if(n>=20)tryUnlock("lib_20");
+    if(n>=50)tryUnlock("lib_50");
+    if(n>=100)tryUnlock("lib_100");
+    if(n>=250)tryUnlock("lib_250");
+    if(n>=500)tryUnlock("lib_500");
+    const totalH=allGames.reduce((s,g)=>s+(g.playtime_seconds||0),0)/3600;
+    if(totalH>=10)tryUnlock("play_10h");
+    if(totalH>=50)tryUnlock("play_50h");
+    if(totalH>=100)tryUnlock("play_100h");
+    if(totalH>=250)tryUnlock("play_250h");
+    if(totalH>=500)tryUnlock("play_500h");
+    if(totalH>=1000)tryUnlock("play_1000h");
+    // 3h single session — only fire if session was actively started and 3h has elapsed
+    try{
+      const ss=parseInt(localStorage.getItem("rs_session_start")||"0");
+      if(ss&&(Date.now()-ss)>=10800000){
+        tryUnlock("session_3h");
+        localStorage.removeItem("rs_session_start"); // clear so it doesn't retrigger
+      }
+    }catch{}
+    // Console Master: every console has 10+ min lifetime playtime
+    if(Object.keys(CONSOLES).every(cid=>allGames.filter(g=>g.consoleId===cid).reduce((s,g)=>s+(g.playtime_seconds||0),0)>=600))tryUnlock("play_all_consoles_10m");
+    // 3h single session — check top game's playtime (rough proxy via total playtime change)
+    const topH=Math.max(0,...allGames.map(g=>(g.playtime_seconds||0)/3600));
+    if(topH>=100)tryUnlock("play_1g_100h");
+    if(topH>=250)tryUnlock("play_1g_250h");
+    // Fully Loaded: 50+ games on every console
+    const consoleCounts={};
+    allGames.forEach(g=>{consoleCounts[g.consoleId]=(consoleCounts[g.consoleId]||0)+1;});
+    if(Object.keys(CONSOLES).every(cid=>(consoleCounts[cid]||0)>=50))tryUnlock("all_consoles_50");
+    // Console Master: every console has 1h+ playtime
+    if(Object.keys(CONSOLES).every(cid=>allGames.filter(g=>g.consoleId===cid).reduce((s,g)=>s+(g.playtime_seconds||0),0)>=3600))tryUnlock("all_consoles_1h");
+    // Collection checks
+    try{
+      const colls=JSON.parse(localStorage.getItem("rs_collections")||"[]");
+      if(colls.length>=5)tryUnlock("coll_5");
+      const allConsoleIds=Object.keys(CONSOLES);
+      const hasAll=colls.some(c=>allConsoleIds.every(cid=>c.games.some(g=>g.consoleId===cid)));
+      if(hasAll)tryUnlock("coll_all_consoles");
+    }catch{}
+    // 30-day streak check
+    try{
+      const today=new Date().toDateString();
+      const streak=JSON.parse(localStorage.getItem("rs_streak")||'{"last":"","count":0}');
+      const yesterday=new Date(Date.now()-86400000).toDateString();
+      if(streak.last!==today){
+        const newCount=streak.last===yesterday?streak.count+1:1;
+        localStorage.setItem("rs_streak",JSON.stringify({last:today,count:newCount}));
+        if(newCount>=30)tryUnlock("streak_30");
+      }
+    }catch{}
+    // Completionist: all other achievements unlocked
+    try{
+      const ul=JSON.parse(localStorage.getItem("rs_achievements")||"{}");
+      const others=ALL_ACHIEVEMENTS.filter(a=>a.id!=="all_achievements");
+      if(others.every(a=>ul[a.id]))tryUnlock("all_achievements");
+    }catch{}
+  },[allGames.length]);
 
   const refreshConfig=()=>{
     invoke("get_config").then(cfg=>{
@@ -3650,27 +4095,86 @@ export default function App(){
   };
   const handleSubSelect=(id)=>{setPicker(null);setActiveId(id);setView("library");};
 
-  const launchGame=(g)=>invoke("launch_game",{consoleId:g.consoleId,gameId:g.id}).catch(()=>{});
+  const launchGame=(g)=>{
+    invoke("launch_game",{consoleId:g.consoleId,gameId:g.id}).catch(()=>{});
+    // Record session start for 3h achievement
+    try{localStorage.setItem("rs_session_start",Date.now().toString());localStorage.setItem("rs_session_game",`${g.consoleId}:${g.id}`);}catch{}
+    // 3AM check
+    const h=new Date().getHours();
+    if(h>=0&&h<4)tryUnlock("secret_3am");
+    // Fast launch check (within 10s of app open)
+    try{
+      const openTime=parseInt(localStorage.getItem("rs_app_open_time")||"0");
+      if(openTime&&Date.now()-openTime<15000)tryUnlock("secret_fast");
+    }catch{}
+    // Track games played today
+    try{
+      const today=new Date().toDateString();
+      const td=JSON.parse(localStorage.getItem("rs_today_games")||"{}");
+      if(td.date!==today){td.date=today;td.games=[];}
+      if(!td.games.includes(`${g.consoleId}:${g.id}`))td.games.push(`${g.consoleId}:${g.id}`);
+      localStorage.setItem("rs_today_games",JSON.stringify(td));
+      if(td.games.length>=10)tryUnlock("play_10_oneday");
+    }catch{}
+    // Track consoles played today with 10min threshold
+    try{
+      const today=new Date().toDateString();
+      const tc=JSON.parse(localStorage.getItem("rs_today_consoles")||"{}");
+      if(tc.date!==today){tc.date=today;tc.consoles=[];}
+      if(!tc.consoles.includes(g.consoleId))tc.consoles.push(g.consoleId);
+      localStorage.setItem("rs_today_consoles",JSON.stringify(tc));
+      // Console Connoisseur: all consoles played today — checked on game load via playtime
+    }catch{}
+  };
+  const handleSaveProfile=(p)=>{
+    saveProfile(p);
+    tryUnlock("profile");
+    if(p.username==="MMAJRJRS")tryUnlock("secret_name");
+    if(p.bio&&p.bio.length>100)tryUnlock("secret_bio_long");
+  };
   const backFromLibrary=()=>{setView("shelf");setActiveId(null);refreshConfig();};
-  const openGlobalSettings=()=>setShowGlobalSettings(true);
+
+  const openGlobalSettings=()=>{setShowGlobalSettings(true)};
   const closeGlobalSettings=()=>setShowGlobalSettings(false);
-  const openCollections=()=>setShowCollections(true);
+  const openCollections=()=>{setShowCollections(true)};
   const closeCollections=()=>setShowCollections(false);
   const closePicker=()=>setPicker(null);
-  const closeBooting=()=>setBooting(false);
-  const openTutorialView=()=>setView("tutorial");
+  const closeBooting=()=>{
+    setBooting(false);
+    try{localStorage.setItem("rs_app_open_time",Date.now().toString());}catch{}
+  };
+
+  // Idle detection — fire 'Why Are You Here' after 1h of no activity
+  useEffect(()=>{
+    let lastActivity=Date.now();
+    const onActivity=()=>{lastActivity=Date.now();};
+    window.addEventListener("mousemove",onActivity);
+    window.addEventListener("keydown",onActivity);
+    window.addEventListener("mousedown",onActivity);
+    const check=setInterval(()=>{
+      if(Date.now()-lastActivity>=3600000)tryUnlock("secret_idle");
+    },60000);
+    return()=>{
+      window.removeEventListener("mousemove",onActivity);
+      window.removeEventListener("keydown",onActivity);
+      window.removeEventListener("mousedown",onActivity);
+      clearInterval(check);
+    };
+  },[]);
   const closeTutorial=()=>setView("shelf");
 
   return(
     <>
       <G/>
       {booting&&<StartupAnimation onDone={closeBooting}/>}
-      {view==="shelf"&&!showCollections&&<MainShelf onOpen={handleOpen} onGlobalSettings={openGlobalSettings} onTutorial={openTutorial} gameCounts={gameCounts} globalCfg={globalCfg} tutorialSeen={tutorialSeen} pinnedGames={pinnedGames} onLaunchPinned={launchPinned} onUnpin={unpinGame} allGames={allGames} onLaunchGame={launchGame} onOpenConsole={handleOpen} onOpenCollections={openCollections} profile={profile} onSaveProfile={saveProfile}/>}
+      {view==="shelf"&&!showCollections&&<MainShelf onOpen={handleOpen} onGlobalSettings={openGlobalSettings} onTutorial={openTutorial} gameCounts={gameCounts} globalCfg={globalCfg} tutorialSeen={tutorialSeen} pinnedGames={pinnedGames} onLaunchPinned={launchPinned} onUnpin={unpinGame} allGames={allGames} onLaunchGame={launchGame} onOpenConsole={handleOpen} onOpenCollections={openCollections} profile={profile} onSaveProfile={handleSaveProfile} achievUnlocked={achievUnlocked} tryUnlock={tryUnlock} gameMeta={gameMeta} onSetRating={setRating} onToggleFav={toggleFav} isFav={isFav} getRating={getRating} sessionHistory={sessionHistory}/>}
       {showCollections&&<CollectionsPage allGames={allGames} onLaunchGame={launchGame} onBack={closeCollections}/>}
-      {view==="library"&&activeId&&<GameLibrary consoleId={activeId} appConfig={appConfig} onBack={backFromLibrary} onConfigUpdate={refreshConfig}/>}
+      {view==="library"&&activeId&&<GameLibrary consoleId={activeId} appConfig={appConfig} onBack={backFromLibrary} onConfigUpdate={refreshConfig} tryUnlock={tryUnlock} getRating={getRating} isFav={isFav} onSetRating={setRating} onToggleFav={toggleFav}/>}
       {view==="tutorial"&&<TutorialPage onClose={closeTutorial}/>}
       {picker&&<SubPicker options={picker.options} onSelect={handleSubSelect} onClose={closePicker}/>}
       {showGlobalSettings&&<GlobalSettings config={appConfig} onClose={closeGlobalSettings} onSaved={refreshConfig}/>}
+      {pendingToast&&<AchievementToast achievement={pendingToast} onDone={()=>setPendingToast(null)}/>}
     </>
   );
 }
+
