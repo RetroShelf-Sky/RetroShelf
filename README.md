@@ -33,6 +33,7 @@ Avoid the eye-sore and brain aneurysm from switching between all your dozen emul
   - Playtime stats & Tracking
   - Setup guides*
   - Achievements
+  - Progress Saves between releases
   - **And much more!**
 
 ---
