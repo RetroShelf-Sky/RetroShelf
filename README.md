@@ -8,7 +8,7 @@ Let me clear some things up, hi, im madeline. The creator of this app, or at lea
 
 <img width="839" height="109" alt="image" src="https://github.com/user-attachments/assets/72f64a55-e5b5-4a70-849c-82c7a51bea5a" />
 
-![RetroShelf v0.3.0](https://img.shields.io/badge/version-0.3.0-c8901a?style=for-the-badge)
+![RetroShelf v0.4.0](https://img.shields.io/badge/version-0.4.0-c8901a?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue?style=for-the-badge)
 
 ## **Your unified retro game launcher** for all your emulators and ROMs.
@@ -32,7 +32,7 @@ Avoid the eye-sore and brain aneurysm from switching between all your dozen emul
   - Pinned games & Collections
   - Playtime stats & Tracking
   - Setup guides*
-  - Achievements (Coming Shortly)
+  - Achievements
   - **And much more!**
 
 ---
