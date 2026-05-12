@@ -1255,7 +1255,7 @@ function GameCard({game,idx,accent,color,consoleId,onPlay,onRemove,onCoverUpdate
 
   return(
     <>
-      <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:"4px",position:"relative"}}>
         <div
           onMouseEnter={()=>setHov(true)}
           onMouseLeave={()=>{setHov(false);}}
@@ -1336,14 +1336,17 @@ function GameCard({game,idx,accent,color,consoleId,onPlay,onRemove,onCoverUpdate
               {isFav&&!showGear&&<div style={{position:"absolute",top:"5px",left:"5px",fontSize:"10px",zIndex:6,filter:"drop-shadow(0 0 3px rgba(248,113,113,0.8))"}}>❤️</div>}
               {/* Rating indicator */}
               {rating>0&&!showGear&&<div style={{position:"absolute",bottom:"5px",left:"5px",background:"rgba(0,0,0,0.7)",borderRadius:"4px",padding:"1px 4px",fontSize:"8px",fontWeight:700,color:accent,zIndex:6}}>★{rating}</div>}
+              {/* Filename overlay — absolutely positioned so it never affects card height */}
+              {showPath&&game.path&&(
+                <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,0.75))",borderRadius:"0 0 8px 8px",zIndex:5,pointerEvents:"none"}}>
+                  <div style={{fontSize:"7px",color:"rgba(255,255,255,0.55)",fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.2}} title={game.path}>
+                    {game.path.split(/[/\\]/).pop()}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
-        {showPath&&game.path&&(
-          <div style={{fontSize:"8px",color:"rgba(255,255,255,0.2)",fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 2px",lineHeight:1.2}} title={game.path}>
-            {game.path.split(/[\\/]/).pop()}
-          </div>
-        )}
       </div>
       {showRename&&<RenameModal game={game} consoleId={consoleId} accent={accent} onClose={()=>setShowRename(false)} onRenamed={onRename}/>}
     </>
@@ -1471,24 +1474,38 @@ function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate,tryUnlock,getRat
     catch(e){showToast(`${e}`,"error");}
   };
   const launchGame=async(game)=>{
+    // Set session start and check timing-sensitive achievements BEFORE launching
+    try{localStorage.setItem("rs_session_start",Date.now().toString());}catch{}
+    const h=new Date().getHours();
+    if(tryUnlock&&h===3)tryUnlock("secret_3am");
+    if(tryUnlock){
+      try{
+        const openTime=parseInt(localStorage.getItem("rs_app_open_time")||"0");
+        if(openTime&&Date.now()-openTime<15000)tryUnlock("secret_fast");
+      }catch{}
+    }
     try{
-      const launchStart=Date.now();
-      await invoke("launch_game",{consoleId,gameId:game.id});
-      const durationSeconds=Math.round((Date.now()-launchStart)/1000);
-      window._addSession?.(consoleId,game.id,game.title||"Unknown",durationSeconds);
-      if(tryUnlock){
-        const h=new Date().getHours();
-        if(h>=0&&h<4)tryUnlock("secret_3am");
+      const durationSeconds=await invoke("launch_game",{consoleId,gameId:game.id});
+      window._addSession?.(consoleId,game.id,game.title||"Unknown",durationSeconds||0);
+      // Track console as played today if session was 10+ minutes
+      if(durationSeconds>=600){
         try{
-          const openTime=parseInt(localStorage.getItem("rs_app_open_time")||"0");
-          if(openTime&&Date.now()-openTime<15000)tryUnlock("secret_fast");
+          const today=new Date().toDateString();
+          const tc=JSON.parse(localStorage.getItem("rs_today_consoles")||"{}");
+          if(tc.date!==today){tc.date=today;tc.consoles=[];}
+          if(!tc.consoles.includes(consoleId))tc.consoles.push(consoleId);
+          localStorage.setItem("rs_today_consoles",JSON.stringify(tc));
+        }catch{}
+      }
+      // Track games played today (after session so we know it was really played)
+      if(tryUnlock){
+        try{
           const today=new Date().toDateString();
           const td=JSON.parse(localStorage.getItem("rs_today_games")||"{}");
           if(td.date!==today){td.date=today;td.games=[];}
           if(!td.games.includes(`${consoleId}:${game.id}`))td.games.push(`${consoleId}:${game.id}`);
           localStorage.setItem("rs_today_games",JSON.stringify(td));
           if(td.games.length>=10)tryUnlock("play_10_oneday");
-          localStorage.setItem("rs_session_start",Date.now().toString());
         }catch{}
       }
     }
@@ -1522,8 +1539,18 @@ function GameLibrary({consoleId,appConfig,onBack,onConfigUpdate,tryUnlock,getRat
           <Btn onClick={fetchCovers} disabled={fetchingCovers} style={{fontSize:"11px",display:"flex",alignItems:"center",gap:"4px"}}>
             {fetchingCovers?<Spinner size={11}/>:"🖼"} Fetch Covers
           </Btn>
-          <Btn onClick={async()=>{setScanning(true);try{const folders=(appConfig?.consoles?.[consoleId]?.rom_folders||[]);for(const folder of folders){try{const n=await invoke("scan_rom_folder",{consoleId,folder});setGames(p=>{const existing=new Set(p.map(g=>g.path));return[...p,...n.filter(g=>!existing.has(g.path))];});}catch{}}// Remove games from folders no longer configured
-await invoke("cleanup_orphaned_games").catch(()=>{});const fresh=await invoke("get_games",{consoleId}).catch(()=>null);if(fresh)setGames(fresh);showToast("Library refreshed","success");}finally{setScanning(false);}}} disabled={scanning} style={{fontSize:"11px",display:"flex",alignItems:"center",gap:"4px"}} title="Rescan ROM folders">
+          <Btn onClick={async()=>{setScanning(true);try{
+            const folders=(appConfig?.consoles?.[consoleId]?.rom_folders||[]);
+            for(const folder of folders){
+              try{const n=await invoke("scan_rom_folder",{consoleId,folder});setGames(p=>{const existing=new Set(p.map(g=>g.path));return[...p,...n.filter(g=>!existing.has(g.path))];});}catch{}
+            }
+            // Remove games from removed folders AND games whose files no longer exist
+            await invoke("cleanup_orphaned_games").catch(()=>{});
+            await invoke("remove_missing_files",{consoleId}).catch(()=>{});
+            const fresh=await invoke("get_games",{consoleId}).catch(()=>null);
+            if(fresh)setGames(fresh);
+            showToast("Library refreshed","success");
+          }finally{setScanning(false);}}} disabled={scanning} style={{fontSize:"11px",display:"flex",alignItems:"center",gap:"4px"}} title="Rescan ROM folders">
             {scanning?<Spinner size={11} color={c.accent}/>:"🔄"} Refresh
           </Btn>
           <Btn onClick={()=>setShowDirectory(true)} style={{fontSize:"11px"}}>📂 Directory</Btn>
@@ -1586,7 +1613,7 @@ function GlobalSettings({config,onClose,onSaved}){
     try{
       await invoke("reset_all_settings");
       // Clear all localStorage data
-      const keysToRemove=["rs_tutorial_seen","rs_profile","rs_achievements","rs_pinned","rs_collections","rs_consoles_played","rs_games_played","rs_launch_count","rs_cover_count","rs_rename_count","rs_remove_count","rs_profile_opens","rs_streak","rs_today_games","rs_today_consoles","rs_session_start","rs_app_open_time","rs_last_pin_time","rs_game_meta","rs_session_history"];
+      const keysToRemove=["rs_tutorial_seen","rs_profile","rs_achievements","rs_pinned","rs_collections","rs_consoles_played","rs_games_played","rs_launch_count","rs_cover_count","rs_rename_count","rs_remove_count","rs_profile_opens","rs_streak","rs_today_games","rs_today_consoles","rs_session_start","rs_app_open_time","rs_last_pin_time","rs_game_meta","rs_session_history","rs_guide_progress"];
       keysToRemove.forEach(k=>{try{localStorage.removeItem(k);}catch{}});
       setStatus({msg:"Done! Restarting...",type:"success"});
       setTimeout(()=>invoke("restart_app").catch(()=>{}),1200);
@@ -2146,10 +2173,19 @@ const TUTORIAL_STEPS=[
   },
 ];
 
-function TutorialPage({onClose}){
+function TutorialPage({onClose,tryUnlock}){
   const [step,setStep]=useState("overview");
   const current=TUTORIAL_STEPS.find(s=>s.id===step)||TUTORIAL_STEPS[0];
   const idx=TUTORIAL_STEPS.findIndex(s=>s.id===step);
+
+  const goToStep=(id)=>{
+    setStep(id);
+    const newIdx=TUTORIAL_STEPS.findIndex(s=>s.id===id);
+    try{
+      const prev=parseInt(localStorage.getItem("rs_guide_progress")||"0");
+      if(newIdx+1>prev)localStorage.setItem("rs_guide_progress",(newIdx+1).toString());
+    }catch{}
+  };
   return(
     <div style={{height:"100vh",background:"linear-gradient(160deg,#100a00,#1c1205,#0a0600)",display:"flex",flexDirection:"column",animation:"fadeIn 0.22s ease"}}>
       <div style={{display:"flex",alignItems:"center",gap:"14px",padding:"14px 24px",background:"rgba(0,0,0,0.5)",borderBottom:"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
@@ -2162,7 +2198,7 @@ function TutorialPage({onClose}){
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
         <div style={{width:"220px",flexShrink:0,background:"rgba(0,0,0,0.3)",borderRight:"1px solid rgba(255,255,255,0.05)",padding:"12px 8px",overflowY:"auto"}}>
           {TUTORIAL_STEPS.map((s,i)=>(
-            <div key={s.id} onClick={()=>setStep(s.id)} style={{display:"flex",alignItems:"center",gap:"10px",padding:"9px 10px",borderRadius:"8px",marginBottom:"2px",cursor:"pointer",background:step===s.id?"rgba(200,160,60,0.12)":"transparent",border:`1px solid ${step===s.id?"rgba(200,160,60,0.3)":"transparent"}`,transition:"all 0.15s"}}
+            <div key={s.id} onClick={()=>goToStep(s.id)} style={{display:"flex",alignItems:"center",gap:"10px",padding:"9px 10px",borderRadius:"8px",marginBottom:"2px",cursor:"pointer",background:step===s.id?"rgba(200,160,60,0.12)":"transparent",border:`1px solid ${step===s.id?"rgba(200,160,60,0.3)":"transparent"}`,transition:"all 0.15s"}}
               onMouseEnter={e=>{if(step!==s.id)e.currentTarget.style.background="rgba(255,255,255,0.04)";}}
               onMouseLeave={e=>{if(step!==s.id)e.currentTarget.style.background="transparent";}}>
               <span style={{fontSize:"14px",flexShrink:0}}>{s.icon}</span>
@@ -2204,10 +2240,10 @@ function TutorialPage({onClose}){
               </div>
             )}
             <div style={{display:"flex",justifyContent:"space-between",marginTop:"28px"}}>
-              <Btn onClick={()=>idx>0&&setStep(TUTORIAL_STEPS[idx-1].id)} disabled={idx===0}>← Previous</Btn>
+              <Btn onClick={()=>idx>0&&goToStep(TUTORIAL_STEPS[idx-1].id)} disabled={idx===0}>← Previous</Btn>
               {idx<TUTORIAL_STEPS.length-1
-                ?<Btn variant="accent" accent="#c8a040" onClick={()=>setStep(TUTORIAL_STEPS[idx+1].id)}>Next →</Btn>
-                :<Btn variant="solid" accent="#c8a040" style={{color:"#000"}} onClick={onClose}>Done — Let's Play! 🎮</Btn>}
+                ?<Btn variant="accent" accent="#c8a040" onClick={()=>goToStep(TUTORIAL_STEPS[idx+1].id)}>Next →</Btn>
+                :<Btn variant="solid" accent="#c8a040" style={{color:"#000"}} onClick={()=>{tryUnlock?.("guide_complete");onClose();}}>Done — Let's Play! 🎮</Btn>}
             </div>
           </div>
         </div>
@@ -2444,14 +2480,13 @@ function PatchNotesModal({onClose}){
   const notes=[
     {version:"0.4.0",changes:[
       "Added Achievement System With 34 Achievements And 5 Rarities",
-      "Added Collectibles Case — Unlock Trophies Through Achievements",
+      "Added Collectibles Case",
       "Added GitHub Button Next To Version Pill",
-      "Added Game Ratings — Rate Any Game 1–10 From The Gear Menu",
-      "Added Favorites — Heart Icon On Cards, Filter To Show Only Favorites",
-      "Added Session History — Every Play Session Logged By Day In Your Profile",
+      "Added Game Ratings, Rate Any Game 1–10 From The Gear Menu",
+      "Added Favorites",
+      "Added Session History",
       "Added Playtime Display In Game Gear Menu",
       "Added Most Played Console And Game Badges In Profile Stats",
-      "Added Profile History Tab Grouped By Day",
       "Fixed Bug Where Removed ROM Folders Would Leave Ghost Games Behind",
       "Various Bug Fixes And Improvements",
     ]},
@@ -3204,7 +3239,7 @@ const ALL_ACHIEVEMENTS=[
   {id:"lib_100",            rarity:"uncommon", icon:"🏛",name:"The Librarian",             desc:"Add 100 games to your library",                                cat:"Library"},
   {id:"lib_250",            rarity:"rare",     icon:"👑",name:"Legendary Vault",           desc:"Add 250 games to your library",                                cat:"Library"},
   {id:"lib_500",            rarity:"ultraRare",icon:"💿",name:"The Archive",               desc:"Add 500 games to your library",                                cat:"Library",   trophy:"golden_cd"},
-  {id:"all_consoles_50",    rarity:"rare",     icon:"📦",name:"Fully Loaded",              desc:"Have 50+ games on every console",                              cat:"Library"},
+  {id:"all_consoles_50",    rarity:"rare",     icon:"📦",name:"Fully Loaded",              desc:"Have 15+ games on every console",                              cat:"Library"},
   // Playtime
   {id:"play_10h",           rarity:"common",   icon:"⏱",name:"Just Getting Started",      desc:"Play for 10 total hours",                                      cat:"Playtime"},
   {id:"play_50h",           rarity:"uncommon", icon:"⌛",name:"Dedicated Player",           desc:"Play for 50 total hours",                                      cat:"Playtime"},
@@ -3217,8 +3252,7 @@ const ALL_ACHIEVEMENTS=[
   {id:"play_10_oneday",     rarity:"uncommon", icon:"🎲",name:"Variety Day",               desc:"Play 10 different games in one day",                           cat:"Playtime"},
   {id:"session_3h",         rarity:"uncommon", icon:"🎯",name:"In The Zone",               desc:"Play a game for over 3 hours in one session",                  cat:"Playtime"},
   {id:"streak_30",          rarity:"rare",     icon:"📅",name:"Dedicated",                 desc:"Play every day for 30 days straight",                          cat:"Playtime"},
-  {id:"all_consoles_1h",    rarity:"rare",     icon:"🕹",name:"Console Master",            desc:"Play on every console for over an hour each",                  cat:"Playtime"},
-  {id:"play_all_consoles_10m",rarity:"rare",   icon:"🌐",name:"Console Connoisseur",       desc:"Play on every console for at least 10 minutes each",           cat:"Playtime"},
+  {id:"play_all_consoles_10m",rarity:"uncommon", icon:"🌐",name:"Console Connoisseur",       desc:"Play 10 minutes on every console in one session",              cat:"Playtime"},
   // Display
   {id:"pin_12",             rarity:"common",   icon:"📌",name:"Full Wall",                 desc:"Pin all 12 game posters",                                      cat:"Display"},
   // Collections
@@ -3226,6 +3260,7 @@ const ALL_ACHIEVEMENTS=[
   {id:"coll_all_consoles",  rarity:"uncommon", icon:"🌍",name:"Everything Shelf",          desc:"Have a collection with games from every console",              cat:"Collections"},
   // Profile
   {id:"profile",            rarity:"common",   icon:"👤",name:"Identity",                  desc:"Create your profile",                                          cat:"Profile"},
+  {id:"guide_complete",     rarity:"common",   icon:"📖",name:"Did Your Homework",          desc:"View all 19 steps of the setup guide",                         cat:"Profile"},
   // Hidden
   {id:"secret_name",        rarity:"hidden",   icon:"🌀",name:"MMAJRJRS",                  desc:"???",                                                          cat:"Hidden",    trophy:"desk_fan"},
   {id:"secret_3am",         rarity:"hidden",   icon:"🌙",name:"Night Owl",                 desc:"The world is quiet. The shelf glows. Most are asleep.",         cat:"Hidden"},
@@ -3243,11 +3278,15 @@ function useAchievements(){
     try{return JSON.parse(localStorage.getItem("rs_achievements")||"{}");}catch{return {};}
   });
   const unlock=(id)=>{
-    if(unlocked[id])return null;
-    const next={...unlocked,[id]:{unlockedAt:Date.now()}};
-    setUnlocked(next);
-    try{localStorage.setItem("rs_achievements",JSON.stringify(next));}catch{}
-    return ALL_ACHIEVEMENTS.find(a=>a.id===id)||null;
+    // Always read fresh from localStorage to avoid stale closure overwriting concurrent unlocks
+    try{
+      const current=JSON.parse(localStorage.getItem("rs_achievements")||"{}");
+      if(current[id])return null;
+      const next={...current,[id]:{unlockedAt:Date.now()}};
+      localStorage.setItem("rs_achievements",JSON.stringify(next));
+      setUnlocked(next);
+      return ALL_ACHIEVEMENTS.find(a=>a.id===id)||null;
+    }catch{return null;}
   };
   return{unlocked,unlock};
 }
@@ -3297,11 +3336,57 @@ function CollectiblesCase({unlocked,accentColor,mainColor}){
   );
 }
 
-function AchievementsTab({unlocked,accentColor,mainColor}){
+function AchievementsTab({unlocked,accentColor,mainColor,allGames=[]}){
   const rarityOrder=["common","uncommon","rare","ultraRare","hidden"];
   const sorted=[...ALL_ACHIEVEMENTS].sort((a,b)=>rarityOrder.indexOf(a.rarity)-rarityOrder.indexOf(b.rarity));
   const total=ALL_ACHIEVEMENTS.length;
   const count=ALL_ACHIEVEMENTS.filter(a=>unlocked[a.id]).length;
+
+  const getProgress=(id)=>{
+    try{
+      const n=allGames.length;
+      const totalH=allGames.reduce((s,g)=>s+(g.playtime_seconds||0),0)/3600;
+      const topH=allGames.length?Math.max(...allGames.map(g=>(g.playtime_seconds||0)/3600)):0;
+      const consoleCounts={};
+      allGames.forEach(g=>{consoleCounts[g.consoleId]=(consoleCounts[g.consoleId]||0)+1;});
+      const numConsoles=Object.keys(CONSOLES).length;
+      const minConsole=numConsoles>0?Math.min(...Object.keys(CONSOLES).map(cid=>consoleCounts[cid]||0)):0;
+      const colls=JSON.parse(localStorage.getItem("rs_collections")||"[]");
+      const streak=JSON.parse(localStorage.getItem("rs_streak")||'{"count":0}');
+      const tdg=JSON.parse(localStorage.getItem("rs_today_games")||"{}");
+      const tdc=JSON.parse(localStorage.getItem("rs_today_consoles")||"{}");
+      const pinned=JSON.parse(localStorage.getItem("rs_pinned")||"[]");
+      const map={
+        lib_5:             {cur:Math.min(n,5),    max:5},
+        lib_10:            {cur:Math.min(n,10),   max:10},
+        lib_20:            {cur:Math.min(n,20),   max:20},
+        lib_50:            {cur:Math.min(n,50),   max:50},
+        lib_100:           {cur:Math.min(n,100),  max:100},
+        lib_250:           {cur:Math.min(n,250),  max:250},
+        lib_500:           {cur:Math.min(n,500),  max:500},
+        all_consoles_50:   {cur:Object.keys(CONSOLES).filter(cid=>(consoleCounts[cid]||0)>=15).length, max:numConsoles, unit:"consoles"},
+        play_10h:          {cur:Math.min(Math.floor(totalH),10),   max:10,   unit:"hrs"},
+        play_50h:          {cur:Math.min(Math.floor(totalH),50),   max:50,   unit:"hrs"},
+        play_100h:         {cur:Math.min(Math.floor(totalH),100),  max:100,  unit:"hrs"},
+        play_250h:         {cur:Math.min(Math.floor(totalH),250),  max:250,  unit:"hrs"},
+        play_500h:         {cur:Math.min(Math.floor(totalH),500),  max:500,  unit:"hrs"},
+        play_1000h:        {cur:Math.min(Math.floor(totalH),1000), max:1000, unit:"hrs"},
+        play_1g_100h:      {cur:Math.min(Math.floor(topH),100),    max:100,  unit:"hrs"},
+        play_1g_250h:      {cur:Math.min(Math.floor(topH),250),    max:250,  unit:"hrs"},
+        play_10_oneday:    {cur:Math.min((tdg.games||[]).length,10), max:10,  unit:"games"},
+        session_3h:        (()=>{const ss=parseInt(localStorage.getItem("rs_session_start")||"0");if(!ss)return null;const elapsed=Math.min(Math.floor((Date.now()-ss)/60000),180);return{cur:elapsed,max:180,unit:"min"};})(),
+        streak_30:         {cur:Math.min(streak.count||0,30),      max:30},
+        play_all_consoles_10m:{cur:Math.min((tdc.consoles||[]).length,numConsoles),max:numConsoles},
+        pin_12:            {cur:Math.min(pinned.length,12),         max:12},
+        coll_5:            {cur:Math.min(colls.length,5),           max:5},
+        coll_all_consoles: {cur:Math.min(Math.max(0,...[0,...colls.map(c=>new Set(c.games.map(g=>g.consoleId)).size)]),numConsoles),max:numConsoles},
+        profile:           null,
+        guide_complete:    {cur:Math.min(parseInt(localStorage.getItem("rs_guide_progress")||"0"),19), max:19, unit:"steps"},
+        all_achievements:  {cur:Math.min(count,total-1),           max:total-1},
+      };
+      return map[id]||null;
+    }catch{return null;}
+  };
   return(
     <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
       {/* Progress */}
@@ -3332,6 +3417,7 @@ function AchievementsTab({unlocked,accentColor,mainColor}){
                 {!done&&isHidden&&<div style={{fontSize:"8px",color:`${r.color}88`,marginTop:"1px",fontStyle:"italic"}}>{a.desc}</div>}
                 {!done&&!isHidden&&<div style={{fontSize:"8px",color:"rgba(255,255,255,0.25)",marginTop:"1px"}}>{a.desc}</div>}
                 {date&&<div style={{fontSize:"7px",color:`${r.color}88`,marginTop:"2px",fontWeight:700}}>✓ {date}</div>}
+                {(()=>{const prog=(!done&&!isHidden)?getProgress(a.id):null;if(!prog)return null;const pct=Math.min(100,Math.round((prog.cur/prog.max)*100));const lbl=prog.unit?`${prog.cur} / ${prog.max} ${prog.unit}`:`${prog.cur} / ${prog.max}`;return(<div style={{marginTop:"5px"}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:"2px"}}><div style={{fontSize:"7px",color:r.color,fontWeight:700}}>{lbl}</div><div style={{fontSize:"7px",color:`${r.color}88`}}>{pct}%</div></div><div style={{height:"3px",background:"rgba(255,255,255,0.06)",borderRadius:"2px",overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${r.color}66,${r.color})`,borderRadius:"2px",transition:"width 0.4s ease"}}/></div></div>);})()}
               </div>
               {a.trophy&&done&&<div title={COLLECTIBLES[a.trophy].name} style={{fontSize:"14px",flexShrink:0}}>{COLLECTIBLES[a.trophy].icon}</div>}
             </div>
@@ -3585,7 +3671,7 @@ function ProfileModal({profile,allGames,pinnedGames,onClose,onSave,achievUnlocke
 
           {/* ACHIEVEMENTS TAB */}
           {tab==="achievements"&&(
-            <AchievementsTab unlocked={achievUnlocked} accentColor={accentColor} mainColor={mainColor}/>
+            <AchievementsTab unlocked={achievUnlocked} accentColor={accentColor} mainColor={mainColor} allGames={allGames}/>
           )}
 
           {/* COLLECTIBLES — shown at bottom of stats tab */}
@@ -3931,11 +4017,19 @@ export default function App(){
   const {getMeta,setRating,toggleFav,isFav,getRating,meta:gameMeta}=useGameMeta();
   const {history:sessionHistory,addSession}=useSessionHistory();
   useEffect(()=>{window._addSession=addSession;return()=>{delete window._addSession;};},[addSession]);
+  const [toastQueue,setToastQueue]=useState([]);
   const [pendingToast,setPendingToast]=useState(null);
   const tryUnlock=(id)=>{
     const a=unlockAchiev(id);
-    if(a)setPendingToast(a);
+    if(a)setToastQueue(q=>[...q,a]);
   };
+  // Show next toast when current one finishes
+  useEffect(()=>{
+    if(!pendingToast&&toastQueue.length>0){
+      setPendingToast(toastQueue[0]);
+      setToastQueue(q=>q.slice(1));
+    }
+  },[pendingToast,toastQueue]);
   const [activeId,setActiveId]=useState(null);
   const [picker,setPicker]=useState(null);
   const [showCollections,setShowCollections]=useState(false);
@@ -3963,12 +4057,21 @@ export default function App(){
         const stored=JSON.parse(localStorage.getItem("rs_pinned")||"[]");
         setPinnedGames(prev=>JSON.stringify(prev)===JSON.stringify(stored)?prev:stored);
       }catch{}
+      // Check console connoisseur — fires after GameLibrary updates rs_today_consoles
+      try{
+        const today=new Date().toDateString();
+        const tc=JSON.parse(localStorage.getItem("rs_today_consoles")||"{}");
+        if(tc.date===today&&tc.consoles&&Object.keys(CONSOLES).every(cid=>tc.consoles.includes(cid)))tryUnlock("play_all_consoles_10m");
+      }catch{}
     },500);
     return()=>{window.removeEventListener("storage",sync);clearInterval(id);};
   },[]);
 
   const launchPinned=async(pinned)=>{
-    invoke("launch_game",{consoleId:pinned.consoleId,gameId:pinned.gameId}).catch(()=>{});
+    try{
+      const duration=await invoke("launch_game",{consoleId:pinned.consoleId,gameId:pinned.gameId});
+      window._addSession?.(pinned.consoleId,pinned.gameId,pinned.title||"Unknown",duration||0);
+    }catch{}
   };
 
   const unpinGame=(pinned)=>{
@@ -4015,6 +4118,17 @@ export default function App(){
     setTimeout(()=>{
       invoke("startup_scan").then(()=>loadCounts()).catch(()=>{});
     },1500);
+    // Check streak on every app open (not just when game count changes)
+    try{
+      const today=new Date().toDateString();
+      const yesterday=new Date(Date.now()-86400000).toDateString();
+      const streak=JSON.parse(localStorage.getItem("rs_streak")||'{"last":"","count":0}');
+      if(streak.last!==today){
+        const newCount=streak.last===yesterday?streak.count+1:1;
+        localStorage.setItem("rs_streak",JSON.stringify({last:today,count:newCount}));
+        if(newCount>=30)setTimeout(()=>tryUnlock("streak_30"),2000);
+      }
+    }catch{}
   },[]);
 
   // Check library/playtime achievements whenever games change
@@ -4042,18 +4156,14 @@ export default function App(){
         localStorage.removeItem("rs_session_start"); // clear so it doesn't retrigger
       }
     }catch{}
-    // Console Master: every console has 10+ min lifetime playtime
-    if(Object.keys(CONSOLES).every(cid=>allGames.filter(g=>g.consoleId===cid).reduce((s,g)=>s+(g.playtime_seconds||0),0)>=600))tryUnlock("play_all_consoles_10m");
     // 3h single session — check top game's playtime (rough proxy via total playtime change)
     const topH=Math.max(0,...allGames.map(g=>(g.playtime_seconds||0)/3600));
     if(topH>=100)tryUnlock("play_1g_100h");
     if(topH>=250)tryUnlock("play_1g_250h");
-    // Fully Loaded: 50+ games on every console
+    // Fully Loaded: 15+ games on every console
     const consoleCounts={};
     allGames.forEach(g=>{consoleCounts[g.consoleId]=(consoleCounts[g.consoleId]||0)+1;});
-    if(Object.keys(CONSOLES).every(cid=>(consoleCounts[cid]||0)>=50))tryUnlock("all_consoles_50");
-    // Console Master: every console has 1h+ playtime
-    if(Object.keys(CONSOLES).every(cid=>allGames.filter(g=>g.consoleId===cid).reduce((s,g)=>s+(g.playtime_seconds||0),0)>=3600))tryUnlock("all_consoles_1h");
+    if(Object.keys(CONSOLES).every(cid=>(consoleCounts[cid]||0)>=15))tryUnlock("all_consoles_50");
     // Collection checks
     try{
       const colls=JSON.parse(localStorage.getItem("rs_collections")||"[]");
@@ -4061,17 +4171,6 @@ export default function App(){
       const allConsoleIds=Object.keys(CONSOLES);
       const hasAll=colls.some(c=>allConsoleIds.every(cid=>c.games.some(g=>g.consoleId===cid)));
       if(hasAll)tryUnlock("coll_all_consoles");
-    }catch{}
-    // 30-day streak check
-    try{
-      const today=new Date().toDateString();
-      const streak=JSON.parse(localStorage.getItem("rs_streak")||'{"last":"","count":0}');
-      const yesterday=new Date(Date.now()-86400000).toDateString();
-      if(streak.last!==today){
-        const newCount=streak.last===yesterday?streak.count+1:1;
-        localStorage.setItem("rs_streak",JSON.stringify({last:today,count:newCount}));
-        if(newCount>=30)tryUnlock("streak_30");
-      }
     }catch{}
     // Completionist: all other achievements unlocked
     try{
@@ -4095,35 +4194,28 @@ export default function App(){
   };
   const handleSubSelect=(id)=>{setPicker(null);setActiveId(id);setView("library");};
 
-  const launchGame=(g)=>{
-    invoke("launch_game",{consoleId:g.consoleId,gameId:g.id}).catch(()=>{});
-    // Record session start for 3h achievement
+  const launchGame=async(g)=>{
+    // Set session start BEFORE launching (for 3h timer)
     try{localStorage.setItem("rs_session_start",Date.now().toString());localStorage.setItem("rs_session_game",`${g.consoleId}:${g.id}`);}catch{}
-    // 3AM check
+    // Timing-sensitive checks BEFORE launching
     const h=new Date().getHours();
-    if(h>=0&&h<4)tryUnlock("secret_3am");
-    // Fast launch check (within 10s of app open)
+    if(h===3)tryUnlock("secret_3am");
     try{
       const openTime=parseInt(localStorage.getItem("rs_app_open_time")||"0");
       if(openTime&&Date.now()-openTime<15000)tryUnlock("secret_fast");
     }catch{}
-    // Track games played today
     try{
-      const today=new Date().toDateString();
-      const td=JSON.parse(localStorage.getItem("rs_today_games")||"{}");
-      if(td.date!==today){td.date=today;td.games=[];}
-      if(!td.games.includes(`${g.consoleId}:${g.id}`))td.games.push(`${g.consoleId}:${g.id}`);
-      localStorage.setItem("rs_today_games",JSON.stringify(td));
-      if(td.games.length>=10)tryUnlock("play_10_oneday");
-    }catch{}
-    // Track consoles played today with 10min threshold
-    try{
-      const today=new Date().toDateString();
-      const tc=JSON.parse(localStorage.getItem("rs_today_consoles")||"{}");
-      if(tc.date!==today){tc.date=today;tc.consoles=[];}
-      if(!tc.consoles.includes(g.consoleId))tc.consoles.push(g.consoleId);
-      localStorage.setItem("rs_today_consoles",JSON.stringify(tc));
-      // Console Connoisseur: all consoles played today — checked on game load via playtime
+      const duration=await invoke("launch_game",{consoleId:g.consoleId,gameId:g.id});
+      window._addSession?.(g.consoleId,g.id,g.title||"Unknown",duration||0);
+      // Track games played today AFTER successful session
+      try{
+        const today=new Date().toDateString();
+        const td=JSON.parse(localStorage.getItem("rs_today_games")||"{}");
+        if(td.date!==today){td.date=today;td.games=[];}
+        if(!td.games.includes(`${g.consoleId}:${g.id}`))td.games.push(`${g.consoleId}:${g.id}`);
+        localStorage.setItem("rs_today_games",JSON.stringify(td));
+        if(td.games.length>=10)tryUnlock("play_10_oneday");
+      }catch{}
     }catch{}
   };
   const handleSaveProfile=(p)=>{
@@ -4170,7 +4262,7 @@ export default function App(){
       {view==="shelf"&&!showCollections&&<MainShelf onOpen={handleOpen} onGlobalSettings={openGlobalSettings} onTutorial={openTutorial} gameCounts={gameCounts} globalCfg={globalCfg} tutorialSeen={tutorialSeen} pinnedGames={pinnedGames} onLaunchPinned={launchPinned} onUnpin={unpinGame} allGames={allGames} onLaunchGame={launchGame} onOpenConsole={handleOpen} onOpenCollections={openCollections} profile={profile} onSaveProfile={handleSaveProfile} achievUnlocked={achievUnlocked} tryUnlock={tryUnlock} gameMeta={gameMeta} onSetRating={setRating} onToggleFav={toggleFav} isFav={isFav} getRating={getRating} sessionHistory={sessionHistory}/>}
       {showCollections&&<CollectionsPage allGames={allGames} onLaunchGame={launchGame} onBack={closeCollections}/>}
       {view==="library"&&activeId&&<GameLibrary consoleId={activeId} appConfig={appConfig} onBack={backFromLibrary} onConfigUpdate={refreshConfig} tryUnlock={tryUnlock} getRating={getRating} isFav={isFav} onSetRating={setRating} onToggleFav={toggleFav}/>}
-      {view==="tutorial"&&<TutorialPage onClose={closeTutorial}/>}
+      {view==="tutorial"&&<TutorialPage onClose={closeTutorial} tryUnlock={tryUnlock}/>}
       {picker&&<SubPicker options={picker.options} onSelect={handleSubSelect} onClose={closePicker}/>}
       {showGlobalSettings&&<GlobalSettings config={appConfig} onClose={closeGlobalSettings} onSaved={refreshConfig}/>}
       {pendingToast&&<AchievementToast achievement={pendingToast} onDone={()=>setPendingToast(null)}/>}

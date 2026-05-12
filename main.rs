@@ -372,7 +372,7 @@ async fn launch_game(
     console_id: String,
     game_id: String,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let (emulator, extra_args, hide_window, resume_last, close_on_quit) = {
         let cfg = state.config.lock().unwrap();
         let con = cfg.consoles.get(&console_id)
@@ -465,19 +465,18 @@ async fn launch_game(
         save_games(&state.games_path, &store)?;
     }
 
-    // Always spawn a background thread to wait for emulator exit,
-    // track playtime, and optionally bring RetroShelf back to front.
+    // Wait for emulator to exit, then save playtime and return elapsed seconds
     let games_path = state.games_path.clone();
     let games_state = state.games.clone();
-    tokio::spawn(async move {
-        let _ = tokio::task::spawn_blocking(move || child.wait()).await;
-        let elapsed = launch_time.elapsed().as_secs();
+    let elapsed = tokio::task::spawn_blocking(move || {
+        let _ = child.wait();
+        let secs = launch_time.elapsed().as_secs();
         // Save playtime
         {
             let mut store = games_state.lock().unwrap();
             if let Some(games) = store.games.get_mut(&console_id) {
                 if let Some(g) = games.iter_mut().find(|g| g.id == game_id) {
-                    g.playtime_seconds = g.playtime_seconds.saturating_add(elapsed);
+                    g.playtime_seconds = g.playtime_seconds.saturating_add(secs);
                 }
             }
             let _ = save_games(&games_path, &store);
@@ -496,9 +495,10 @@ async fn launch_game(
                 }
             }
         }
-    });
+        secs
+    }).await.unwrap_or(0);
 
-    Ok(())
+    Ok(elapsed)
 }
 
 // Windows-specific helpers for bringing window to front
@@ -902,6 +902,25 @@ async fn set_custom_cover(
 }
 
 #[tauri::command]
+async fn remove_missing_files(
+    console_id: String,
+    state: State<'_, AppState>,
+) -> Result<u32, String> {
+    let mut store = state.games.lock().unwrap();
+    if let Some(games) = store.games.get_mut(&console_id) {
+        let before = games.len();
+        games.retain(|g| Path::new(&g.path).exists());
+        let removed = (before - games.len()) as u32;
+        if removed > 0 {
+            save_games(&state.games_path, &store)?;
+        }
+        Ok(removed)
+    } else {
+        Ok(0)
+    }
+}
+
+#[tauri::command]
 async fn cleanup_orphaned_games(state: State<'_, AppState>) -> Result<HashMap<String, u32>, String> {
     let folders: HashMap<String, Vec<String>> = {
         let cfg = state.config.lock().unwrap();
@@ -917,7 +936,8 @@ async fn cleanup_orphaned_games(state: State<'_, AppState>) -> Result<HashMap<St
         if let Some(games) = store.games.get_mut(console_id) {
             let before = games.len();
             games.retain(|g| {
-                // Keep the game if its path lives inside any configured folder
+                // Remove if path doesn't exist on disk OR doesn't belong to any configured folder
+                Path::new(&g.path).exists() &&
                 rom_folders.iter().any(|folder| {
                     Path::new(&g.path).starts_with(Path::new(folder))
                 })
@@ -2067,6 +2087,7 @@ fn main() {
             set_custom_cover,
             rescan_all_folders,
             cleanup_orphaned_games,
+            remove_missing_files,
             write_emulator_config,
             write_controller_bindings,
             write_dolphin_config,
