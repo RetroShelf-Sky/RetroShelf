@@ -1,7 +1,7 @@
 ---
 
 
-<img width="848" height="263" alt="Screenshot 2026-05-11 201043" src="https://github.com/user-attachments/assets/429a09d2-8b93-4365-a0e1-ecb115d2d1d9" />
+<img width="648" height="163" alt="Screenshot 2026-05-11 201043" src="https://github.com/user-attachments/assets/429a09d2-8b93-4365-a0e1-ecb115d2d1d9" />
 
 ![RetroShelf v0.4.0](https://img.shields.io/badge/version-0.4.0-c8901a?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue?style=for-the-badge)
